@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>人脸标签工作区 · Portrait Lab</title>
+  <link rel="stylesheet" href="/face-tagging.css">
+</head>
+<body>
+  <main class="tagging-app">
+    <header class="tagging-header">
+      <a class="brand" href="/" aria-label="返回人像工作站">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span><strong>PORTRAIT LAB</strong><small>人脸标签工作区</small></span>
+      </a>
+      <nav class="mode-switch" aria-label="标注对象">
+        <button type="button" id="templateModeButton" class="mode-button is-active">模板标注</button>
+        <button type="button" id="identityModeButton" class="mode-button">客户照片标注</button>
+      </nav>
+      <div class="header-progress">
+        <strong id="taggingProgress">0 / 0</strong>
+        <span id="taggingProgressText">等待加载</span>
+      </div>
+    </header>
+
+    <section class="identity-context" id="identityContext" hidden>
+      <label>客户<select id="customerSelect"><option value="">请选择客户</option></select></label>
+      <label>匹配模板<select id="matchTemplateSelect"><option value="">请选择模板</option></select></label>
+      <button type="button" id="runMatchPreview" class="secondary-button">查看最接近照片</button>
+    </section>
+
+    <section class="tagging-workspace">
+      <div class="tagging-media">
+        <div class="media-toolbar">
+          <div>
+            <span class="eyebrow" id="subjectKindLabel">TEMPLATE</span>
+            <h1 id="taggingTitle">加载中</h1>
+          </div>
+          <div class="media-toolbar-actions">
+            <label class="template-filter" id="templateFilterWrap">
+              <span>筛选</span>
+              <select id="templateStatusFilter" aria-label="按模板状态筛选">
+                <option value="all">全部</option>
+                <option value="active">正式可用</option>
+                <option value="candidate">候选观察</option>
+                <option value="rejected">已淘汰</option>
+                <option value="untagged">未标注</option>
+              </select>
+            </label>
+            <div class="source-state" id="sourceState">尚未标注</div>
+          </div>
+        </div>
+        <div class="image-stage">
+          <img id="taggingImage" alt="当前标注图片">
+          <div class="image-loading" id="imageLoading">正在加载图片…</div>
+        </div>
+        <div class="media-navigation">
+          <button type="button" id="previousItem" class="quiet-button">← 上一张</button>
+          <span id="itemPosition">第 0 张</span>
+          <button type="button" id="nextItem" class="quiet-button">下一张 →</button>
+        </div>
+      </div>
+
+      <aside class="tagging-panel" aria-label="人脸标签">
+        <div class="tagging-panel-header">
+          <div>
+            <span class="eyebrow">FACE STATE</span>
+            <h2>这张脸是什么状态？</h2>
+          </div>
+          <span class="suggestion-badge" id="suggestionBadge" hidden>AI预选 · 等你确认</span>
+        </div>
+
+        <div class="tag-panel-scroll" id="tagPanelScroll">
+          <section class="tag-group template-only" data-template-only>
+            <h3>模板状态</h3>
+            <p>决定这张模板是否进入正式推荐库。</p>
+            <div class="choice-grid three" id="templateStateChoices" data-choice-field="template_state"></div>
+          </section>
+
+          <section class="tag-group template-only style-facets" data-template-only>
+            <div class="style-group-heading"><div><h3>风格分面 V2</h3><p>作品类型只选一个；画面处理最多 3 个；气质定位最多 2 个。</p></div><span class="style-source-state" id="styleFacetSourceState">等待预选</span></div>
+            <div class="style-facet-rejected" id="styleFacetRejectedNotice" hidden>整张模板不再推荐；旧的人脸、角度和风格参数不作为匹配或学习依据。</div>
+            <div class="style-facet-content" id="styleFacetContent">
+              <div class="style-facet-group"><div><b>作品类型</b><small>只选一个</small></div><div class="choice-grid style-facet-grid" id="styleFacetWorkTypeChoices"></div></div>
+              <div class="style-facet-group"><div><b>画面处理</b><small>最多 3 个</small></div><div class="choice-grid style-facet-grid" id="styleFacetTreatmentChoices"></div></div>
+              <div class="style-facet-group"><div><b>气质定位</b><small>最多 2 个</small></div><div class="choice-grid style-facet-grid" id="styleFacetPositioningChoices"></div></div>
+            </div>
+          </section>
+
+          <section class="tag-group">
+            <h3>脸朝哪边</h3>
+            <p>以鼻尖朝向画面哪边为准。</p>
+            <div class="choice-grid seven" id="horizontalChoices" data-choice-field="horizontal"></div>
+          </section>
+
+          <section class="tag-group compact-pair">
+            <div>
+              <h3>抬头还是低头</h3>
+              <div class="choice-grid five" id="verticalChoices" data-choice-field="vertical"></div>
+            </div>
+            <div>
+              <h3>头有没有歪</h3>
+              <div class="choice-grid five" id="tiltChoices" data-choice-field="tilt"></div>
+            </div>
+          </section>
+
+          <section class="tag-group compact-pair">
+            <div>
+              <h3>眼睛状态</h3>
+              <div class="choice-grid five" id="eyeOpennessChoices" data-choice-field="eyes.openness"></div>
+            </div>
+            <div>
+              <h3>眼神方向</h3>
+              <div class="choice-grid seven" id="gazeChoices" data-choice-field="eyes.gaze"></div>
+            </div>
+          </section>
+
+          <section class="tag-group compact-pair">
+            <div>
+              <h3>嘴部状态</h3>
+              <div class="choice-grid five" id="mouthChoices" data-choice-field="mouth"></div>
+            </div>
+            <div>
+              <h3>脸部大小</h3>
+              <div class="choice-grid three" id="faceScaleChoices" data-choice-field="face_scale"></div>
+            </div>
+          </section>
+
+          <section class="tag-group compact-pair">
+            <div>
+              <h3>脸部是否清楚</h3>
+              <div class="choice-grid three" id="usabilityChoices" data-choice-field="usability"></div>
+            </div>
+            <div>
+              <h3>遮挡程度</h3>
+              <div class="choice-grid three" id="occlusionSeverityChoices" data-choice-field="occlusion.severity"></div>
+            </div>
+          </section>
+
+          <section class="tag-group" id="occlusionReasonGroup">
+            <h3>遮挡位置</h3>
+            <p>可多选；无遮挡时不需要选择。普通透明眼镜不算遮挡，只有墨镜、深色或强反光镜片真正挡住眼睛时才选择。</p>
+            <div class="choice-grid six" id="occlusionReasonChoices" data-multiple-field="occlusion.reasons"></div>
+          </section>
+
+          <section class="match-preview" id="matchPreview" hidden>
+            <h3>本地匹配结果</h3>
+            <div id="matchPreviewBody"></div>
+          </section>
+        </div>
+
+        <footer class="tagging-actions">
+          <div class="save-state" id="saveState">选择完成后确认</div>
+          <button type="button" id="confirmAndNext" class="primary-button">确认并下一张</button>
+        </footer>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="/face-tagging.js"></script>
+</body>
+</html>

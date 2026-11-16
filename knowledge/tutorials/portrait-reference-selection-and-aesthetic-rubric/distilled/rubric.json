@@ -1,0 +1,144 @@
+{
+  "schema_version": "ai-img-gen.review-rubric.v3",
+  "rubric_version": "portrait-review-v3-three-score-diagnostics-20260816",
+  "title": "商业人像三分制评审与结构化诊断量表",
+  "source": {
+    "supersedes": "portrait-review-v2-tutorial-20260810",
+    "historical_snapshot": "rubric-v2-seven-dimension.json",
+    "authority": "project_AGENTS_three_score_rule",
+    "scope": "project_source_based",
+    "universal_claim": false
+  },
+  "score": {
+    "min": 0,
+    "max": 10,
+    "precision": 1,
+    "non_identity_pass_threshold": 7.0,
+    "identity_pass_threshold": 8.0
+  },
+  "reference_preflight": {
+    "policy_version": "portrait-reference-preflight-v2",
+    "supported_angles": ["frontal", "left_45", "right_45", "full_profile", "other"],
+    "recommended_identity_coverage": ["frontal", "left_45", "right_45"],
+    "blocking_rules": [
+      {
+        "code": "missing_identity_angle",
+        "rule": "The target angle must be present among the customer's identity references."
+      }
+    ],
+    "warnings": [
+      {
+        "code": "template_angle_mismatch",
+        "rule": "Historical template-angle metadata may warn when it differs from the target, but template images do not require manual angle labels."
+      },
+      {
+        "code": "full_profile_high_risk",
+        "rule": "A full profile hides facial features and is high risk unless explicitly required."
+      },
+      {
+        "code": "incomplete_golden_angle_coverage",
+        "rule": "Frontal plus left/right 45-degree references are recommended for reusable identity coverage."
+      }
+    ]
+  },
+  "dimensions": [
+    {
+      "id": "face_identity_fidelity",
+      "label": "人脸一致性",
+      "threshold": 8.0,
+      "gate": "terminal",
+      "source": "project_constitution",
+      "question": "是否仍然是同一个人，五官、脸型和关键身份特征是否稳定？",
+      "low_score_signals": ["五官明显改变", "脸型漂移", "模板人物身份污染", "只能靠后期换脸挽救"],
+      "next_action_on_fail": "discard"
+    },
+    {
+      "id": "realism_naturalness",
+      "label": "真实自然",
+      "threshold": 7.0,
+      "gate": "quality",
+      "source_timestamps": ["06:38", "07:09", "08:02"],
+      "question": "观众是否相信人物真的处于这一刻？眼神、表情和肢体是否自然？",
+      "low_score_signals": ["眼神空洞", "动作僵硬", "脸像拼贴上去", "过度磨皮或滤镜底纹", "强烈AI感"],
+      "next_action_on_fail": "revise_realism"
+    },
+    {
+      "id": "style_consistency",
+      "label": "目标风格一致",
+      "threshold": 7.0,
+      "gate": "quality",
+      "source": "explicit_user_preference",
+      "question": "结果是否符合本次明确要求的风格与参考模板方向？",
+      "low_score_signals": ["整体风格跑偏", "色调或质感不符", "参考模板关键风格未保留"],
+      "next_action_on_fail": "revise_style_prompt"
+    }
+  ],
+  "diagnostic_groups": [
+    {
+      "id": "emotional_clarity",
+      "label": "情绪表达",
+      "customer_scoped": false,
+      "codes": [
+        {"code": "emotion_unclear", "label": "情绪不清晰", "prompt_guidance": "让表情、姿势、服装和光影共同传达清晰且一致的情绪。"},
+        {"code": "expression_atmosphere_conflict", "label": "表情与氛围冲突", "prompt_guidance": "校准人物表情与场景氛围，避免情绪方向互相抵消。"}
+      ]
+    },
+    {
+      "id": "element_coherence",
+      "label": "元素统一",
+      "customer_scoped": false,
+      "codes": [
+        {"code": "elements_incoherent", "label": "画面元素不统一", "prompt_guidance": "服装、妆发、动作、光线、背景、色彩和后期必须服务同一主题。"},
+        {"code": "unmotivated_props_or_effects", "label": "道具或光效无动机", "prompt_guidance": "删除没有叙事动机的道具、颜色和光效，避免为了造型而堆叠元素。"}
+      ]
+    },
+    {
+      "id": "visual_hierarchy",
+      "label": "视觉主次",
+      "customer_scoped": false,
+      "codes": [
+        {"code": "subject_not_primary", "label": "人物不是第一视觉中心", "prompt_guidance": "人物必须是第一视觉中心，光线、前景和背景都应服务人物。"},
+        {"code": "competing_foreground_or_background", "label": "前景或背景抢注意力", "prompt_guidance": "避免巨型前景道具、抢脸元素、夸张眩光和喧宾夺主的背景。"}
+      ]
+    },
+    {
+      "id": "client_suitability",
+      "label": "客户适配",
+      "customer_scoped": true,
+      "codes": [
+        {"code": "client_use_case_mismatch", "label": "与客户使用场景不匹配", "prompt_guidance": "所有场景、道具、文字与服装应符合当前客户的实际使用场景。"},
+        {"code": "profession_or_identity_context_mismatch", "label": "职业或身份语境不匹配", "prompt_guidance": "避免使用会误导客户职业、领域或身份的道具、文字与场景。"},
+        {"code": "client_rejected", "label": "客户明确不接受", "prompt_guidance": "保留客户明确拒绝的方向，仅用于该客户后续避让，不进入跨客户指导。"}
+      ]
+    }
+  ],
+  "verdict_priority": [
+    "face_identity_fidelity",
+    "realism_naturalness",
+    "style_consistency"
+  ],
+  "retired_score_inputs": [
+    "styleLevel",
+    "emotionalClarity",
+    "elementCoherence",
+    "visualHierarchy",
+    "clientSuitability",
+    "clientSuitabilityLevel",
+    "emotional_clarity",
+    "element_coherence",
+    "visual_hierarchy",
+    "client_suitability"
+  ],
+  "learning_policy": {
+    "minimum_reviews_before_guidance": 3,
+    "minimum_failure_rate": 0.5,
+    "identity_scores_never_enter_global_aesthetic_guidance": true,
+    "customer_specific_content_never_enters_cross_customer_guidance": true,
+    "test_runs_must_be_excluded": true
+  },
+  "prompt_guidance_templates": {
+    "realism_naturalness": "强化真实感：眼神、表情和肢体动作自然，避免拼贴感、过度磨皮和明显AI滤镜。",
+    "style_consistency": "严格保持本次明确的目标风格、色调和质感，不要跑向无关风格。"
+  }
+}
+

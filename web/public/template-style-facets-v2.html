@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>模板风格 V2 候选 · Portrait Lab</title>
+  <link rel="stylesheet" href="/template-style-facets-v2.css">
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-mark">◉</span><div><b>PORTRAIT LAB</b><small>模板风格体系候选</small></div></div><span class="read-only">只读预览 · 不影响正式工作站</span></header>
+  <main>
+    <section class="hero"><div><span class="eyebrow">STYLE FACETS V2</span><h1>一张图，不必只属于一种“风格”</h1><p>先判断它是什么作品，再分别描述画面处理和气质定位。三组词不再互相抢位置，大语言模型更容易稳定区分。</p></div><div class="sample-count" id="sampleCount">加载中</div></section>
+    <section class="taxonomy"><article><span>01</span><div><b>作品类型</b><p>单选：时尚编辑、电影叙事、图形海报、纪实生活、商业形象、其他/不确定</p></div></article><article><span>02</span><div><b>画面处理</b><p>最多 3 个：黑白、暗调、明亮清透、鲜艳撞色、复古胶片、粗粝拼贴</p></div></article><article><span>03</span><div><b>气质定位</b><p>最多 2 个：高级、专业、街头、浪漫、前卫、自然亲和</p></div></article></section>
+    <aside class="rejection-rule"><b>已淘汰模板的处理</b><p>“淘汰”只表示整张模板不再推荐，不代表它的黑白、角度、表情等参数是负面样本。V2 不读取这些旧参数。</p></aside>
+    <section class="samples" id="facetSamples" aria-live="polite"></section>
+  </main>
+  <script type="module" src="/template-style-facets-v2.js"></script>
+</body>
+</html>

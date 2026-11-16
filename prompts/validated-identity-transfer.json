@@ -1,0 +1,30 @@
+{
+  "schema_version": "ai-img-gen.validated-identity-transfer-prompt.v1",
+  "prompt_id": "validated-identity-transfer",
+  "status": "user_validated_not_active",
+  "provided_at": "2026-08-27T10:43:21+08:00",
+  "validated_by": "user",
+  "validation_claim": "用户明确说明该提示词已经验证过好用，专门用于换脸。",
+  "activation_state": "not_integrated_into_prompt_compiler",
+  "image_roles": {
+    "image_1": "客户身份参考图；提供人物身份、人脸比例、正脸朝向与发型。",
+    "image_2": "目标风格模板；提供动作、服饰、滤镜、构图与光影，不提供人物身份。"
+  },
+  "exact_prompt": "使用图片 1 人像，采用图片 2 的风格，为图片 1 的人物制作写真海报，严格按照图片 2 中人物的动作以及服饰，但是可以为了人脸相似度而轻微改变动作。保留真实的光影关系。人物面部光线不要过曝。面部与肢体要协调。严格不要使用图片 2 的人像。将图片1人脸部分移植到图片2人脸部分上，覆盖掉图片2的人脸，不要使用图片2的人脸比例，只使用图片1的人脸比例，严格保持图片二的滤镜及动作，然后人脸朝向直接使用图片一的正脸“photorealism”， 使用图片 1 的人脸开始创作写真海报。",
+  "protected_meaning": [
+    "客户身份只能来自图片 1。",
+    "风格、动作、服饰、滤镜与光影主要来自图片 2。",
+    "允许为了身份相似度轻微调整模板动作。",
+    "禁止继承图片 2 的人脸与人脸比例。",
+    "避免面部过曝，并保持面部与肢体协调。"
+  ],
+  "future_use": {
+    "candidate_component": "locked_identity_transfer_block",
+    "required_before_activation": [
+      "版本化 Compiler 合同",
+      "非客户素材真实 A/B 验收",
+      "证明身份一致性不低于当前生产基线",
+      "用户批准正式激活"
+    ]
+  }
+}

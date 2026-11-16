@@ -1,0 +1,16 @@
+# All customer images, generations, credentials and event records stay local.
+data/
+.runtime/
+_work/
+node_modules/
+**/node_modules/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+dist/
+.DS_Store
+Thumbs.db

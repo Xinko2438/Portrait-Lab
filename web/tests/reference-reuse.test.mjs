@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createRunSnapshot,loadRun} from '../src/run-store.mjs';
+import {customerIdFromName} from '../public/task-intent.js';
+import {buildReuseDescriptor,materializeReusedReferences} from '../src/reference-reuse.mjs';
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
+test('recall descriptors are scoped, read-only and materialize exact ordered bytes only on submit',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'reuse-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const customerId=customerIdFromName('owner');const source=await createRunSnapshot({root,customerName:'owner',customerId,prompt:'old compiled text',identityFiles:[{name:'face.png',bytes:png}],templateFiles:[{name:'style.png',bytes:png}],imageApi:{operation:'edit',n:2,size:'1024x1536',quality:'high'}});
+ const run=await loadRun({root,runId:source.runId});const descriptor=buildReuseDescriptor(run);
+ assert.equal(descriptor.customer_id,customerId);assert.equal(descriptor.references.length,2);assert.equal(descriptor.task_intent,null);
+ assert.equal(JSON.stringify(descriptor).includes(root),false);
+ const before=await readFile(run.manifestPath,'utf8');
+ const result=await materializeReusedReferences({root,sourceRunId:source.runId,customerId,references:descriptor.references.map(r=>({role:r.role,ordinal:r.ordinal,sha256:r.sha256,position:0}))});
+ assert.deepEqual(result.identityFiles[0].bytes,png);assert.deepEqual(result.templateFiles[0].bytes,png);
+ assert.equal(await readFile(run.manifestPath,'utf8'),before);
+ await assert.rejects(()=>materializeReusedReferences({root,sourceRunId:source.runId,customerId:customerIdFromName('other'),references:[]}),/客户/);
+ await assert.rejects(()=>materializeReusedReferences({root,sourceRunId:source.runId,customerId,references:[{role:'identity',ordinal:1,sha256:'0'.repeat(64),position:0}]}),/校验/);
+ await assert.rejects(()=>materializeReusedReferences({root,sourceRunId:source.runId,customerId,references:[{role:'identity',ordinal:1,sha256:descriptor.references[0].sha256,position:0,path:'C:/other.png'}]}),/引用/);
+ await writeFile(run.manifest.identity_references[0].path,'tampered');
+ await assert.rejects(()=>materializeReusedReferences({root,sourceRunId:source.runId,customerId,references:[{role:'identity',ordinal:1,sha256:descriptor.references[0].sha256,position:0}]}),/校验/);
+});

@@ -1,0 +1,22 @@
+{
+  "name": "portrait-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-concurrency=4 tests/*.test.mjs",
+    "templates:inspect": "node scripts/import-template-catalog.mjs inspect",
+    "templates:import": "node scripts/import-template-catalog.mjs import",
+    "templates:rebuild": "node scripts/import-template-catalog.mjs rebuild",
+    "templates:benchmark": "node scripts/benchmark-template-selection.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@playwright/mcp": "0.0.79",
+    "fabric": "7.4.0"
+  },
+  "description": "Local-first AI portrait creation, review and iteration workspace"
+}

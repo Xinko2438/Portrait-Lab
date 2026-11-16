@@ -1,0 +1,258 @@
+{
+  "schema_version": "ai-img-gen.template-selection-benchmark.v1",
+  "catalog_expected_count": 124,
+  "cases": [
+    {
+      "case_id": "clean-professional-brand",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_clean_professional",
+        "use_case": "personal_brand_cover",
+        "style_keywords": ["clean_magazine", "minimal_personal_brand"],
+        "avoid_keywords": ["dark_grunge", "sweet"],
+        "target_portrait_scales": ["bust", "half_body"],
+        "target_face_angles": ["front", "front_15_degree"],
+        "temperament_keywords": ["专业", "克制", "成熟"],
+        "face_feature_observations": ["五官清晰", "眼神稳定"],
+        "required_face_visibility": ["high"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "干净克制、可信、适合个人品牌封面"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "black-white-editorial",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_black_white",
+        "use_case": "editorial_cover",
+        "style_keywords": ["black_white_magazine"],
+        "avoid_keywords": ["bold_color_graphic"],
+        "target_portrait_scales": ["close_up", "bust"],
+        "target_face_angles": ["front_15_degree"],
+        "temperament_keywords": ["高级", "冷静", "克制"],
+        "face_feature_observations": ["脸部轮廓明确", "眼神稳定"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "narrow",
+        "free_text_intent": "黑白杂志感，人物是第一视觉中心"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "dark-grunge-music",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_dark_grunge",
+        "use_case": "music_poster",
+        "style_keywords": ["dark_grunge"],
+        "avoid_keywords": ["clean_magazine", "sweet"],
+        "target_portrait_scales": ["bust", "half_body"],
+        "target_face_angles": ["front_15_degree", "front_30_degree"],
+        "temperament_keywords": ["酷感", "冷静", "音乐人气质"],
+        "face_feature_observations": ["五官清晰", "下颌线清楚"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": true,
+        "max_identity_preservation_risk": "high",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "narrow",
+        "free_text_intent": "地下音乐与先锋杂志感，高反差但保持脸部清楚"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "bold-color-graphic",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_bold_color",
+        "use_case": "social_cover",
+        "style_keywords": ["bold_color_graphic"],
+        "avoid_keywords": ["black_white_magazine"],
+        "target_portrait_scales": ["close_up", "bust"],
+        "target_face_angles": ["front", "front_15_degree"],
+        "temperament_keywords": ["时尚", "自信", "酷感"],
+        "face_feature_observations": ["眉眼有辨识度", "五官清晰"],
+        "required_face_visibility": ["high"],
+        "allow_text_on_face": true,
+        "max_identity_preservation_risk": "high",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "narrow",
+        "free_text_intent": "高饱和大胆图形，适合社交媒体封面"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "cinematic-mature",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_cinematic",
+        "use_case": "story_portrait",
+        "style_keywords": ["cinematic_mood"],
+        "avoid_keywords": ["sweet", "bold_color_graphic"],
+        "target_portrait_scales": ["half_body", "environmental_portrait"],
+        "target_face_angles": ["front_15_degree", "front_30_degree"],
+        "temperament_keywords": ["成熟", "文艺", "神秘"],
+        "face_feature_observations": ["脸部轮廓明确", "眼神稳定"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "电影叙事感，光线服务人物而不是抢脸"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "retro-poster",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_retro",
+        "use_case": "retro_campaign",
+        "style_keywords": ["retro_poster"],
+        "avoid_keywords": ["dark_grunge"],
+        "target_portrait_scales": ["bust", "half_body"],
+        "target_face_angles": ["front", "front_15_degree"],
+        "temperament_keywords": ["文艺", "成熟", "自信"],
+        "face_feature_observations": ["五官清晰", "正脸照片质量高"],
+        "required_face_visibility": ["high"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "narrow",
+        "free_text_intent": "复古海报但人物身份稳定，文字不要覆盖脸"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "luxury-fashion",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_luxury",
+        "use_case": "fashion_editorial",
+        "style_keywords": ["luxury_fashion"],
+        "avoid_keywords": ["streetwear_editorial", "sweet"],
+        "target_portrait_scales": ["close_up", "bust"],
+        "target_face_angles": ["front_15_degree", "front_30_degree"],
+        "temperament_keywords": ["高级", "时尚", "克制"],
+        "face_feature_observations": ["下颌线清楚", "鼻梁立体"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "narrow",
+        "free_text_intent": "高级时装编辑，细节精致但不过度装饰"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "streetwear-editorial",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_streetwear",
+        "use_case": "streetwear_campaign",
+        "style_keywords": ["streetwear_editorial"],
+        "avoid_keywords": ["minimal_personal_brand"],
+        "target_portrait_scales": ["half_body", "full_body"],
+        "target_face_angles": ["front_15_degree", "front_30_degree"],
+        "temperament_keywords": ["酷感", "时尚", "自信"],
+        "face_feature_observations": ["五官清晰", "脸部轮廓明确"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "high",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "街头时装编辑，动作有力量，人物仍然清楚"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "documentary-brand",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_documentary",
+        "use_case": "documentary_profile",
+        "style_keywords": ["documentary_poster"],
+        "avoid_keywords": ["bold_color_graphic"],
+        "target_portrait_scales": ["half_body", "environmental_portrait"],
+        "target_face_angles": ["front", "front_15_degree"],
+        "temperament_keywords": ["理性", "专业", "成熟"],
+        "face_feature_observations": ["眼神稳定", "正脸照片质量高"],
+        "required_face_visibility": ["high"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "纪实人物海报，环境有信息但不喧宾夺主"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "full-body-fashion",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_full_body",
+        "use_case": "full_body_editorial",
+        "style_keywords": ["luxury_fashion", "streetwear_editorial"],
+        "avoid_keywords": ["close_up"],
+        "target_portrait_scales": ["full_body"],
+        "target_face_angles": ["front_15_degree"],
+        "temperament_keywords": ["时尚", "自信"],
+        "face_feature_observations": ["脸部轮廓明确"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "high",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "完整身体比例和服装表达，脸部仍可识别"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "strict-low-risk",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_low_risk",
+        "use_case": "identity_first_profile",
+        "style_keywords": ["clean_magazine"],
+        "avoid_keywords": ["dark_grunge", "bold_color_graphic"],
+        "target_portrait_scales": ["bust"],
+        "target_face_angles": ["front", "front_15_degree"],
+        "temperament_keywords": ["专业", "亲和"],
+        "face_feature_observations": ["五官清晰", "正脸照片质量高"],
+        "required_face_visibility": ["high"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "low",
+        "max_generation_difficulty": "medium",
+        "diversity_preference": "narrow",
+        "free_text_intent": "身份稳定优先，允许候选不足但不放宽风险"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "allow_insufficient_candidates": true, "unique_top4_images_when_possible": true }
+    },
+    {
+      "case_id": "balanced-open-brief",
+      "task_brief": {
+        "schema_version": "ai-img-gen.customer-task-brief.v1",
+        "customer_scope_id": "benchmark_balanced_open",
+        "use_case": "portrait_exploration",
+        "style_keywords": ["cinematic_mood", "black_white_magazine", "clean_magazine"],
+        "avoid_keywords": ["sweet"],
+        "target_portrait_scales": ["close_up", "bust", "half_body"],
+        "target_face_angles": ["front", "front_15_degree", "front_30_degree"],
+        "temperament_keywords": ["高级", "文艺", "成熟"],
+        "face_feature_observations": ["五官清晰", "眼神稳定", "脸部轮廓明确"],
+        "required_face_visibility": ["high", "medium"],
+        "allow_text_on_face": false,
+        "max_identity_preservation_risk": "medium",
+        "max_generation_difficulty": "high",
+        "diversity_preference": "balanced",
+        "free_text_intent": "探索三种可靠方向，既要匹配也要有明显差异"
+      },
+      "invariants": { "deterministic": true, "no_hard_violations": true, "unique_top4_images_when_possible": true }
+    }
+  ]
+}
