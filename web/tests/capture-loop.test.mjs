@@ -9,6 +9,26 @@ import { createRunSnapshot, listRuns, loadRun, recordRunEvent } from '../src/run
 import { buildCandidateSlateRequest } from '../src/intelligent-workbench/candidate-slate.mjs';
 const captureModule = await import('../src/result-capture.mjs').catch(() => ({}));
 
+test('current generated-image labels and carousel remain distinct from attachments or edit actions',()=>{
+ assert.deepEqual(captureModule.generatedImageButtonRefs('- button "已生成图像 1" [ref=e10]:\n  - img "已生成图像 1" [ref=e11]\n- button "用户附件" [ref=e12]:\n  - img "用户附件" [ref=e13]'),['e10']);
+ assert.deepEqual(captureModule.generatedImageCarouselRefs('- group "生成的图像":\n  - button "显示生成的图像 1" [pressed] [ref=e20]\n  - button "显示生成的图像 2" [ref=e21]\n- button "编辑生成的图像 1" [ref=e22]'),['e20','e21']);
+});
+
+test('current two-image carousel loads the other candidate and captures both originals without send controls',async()=>{
+ const outputDir=await mkdtemp(join(tmpdir(),'capture-current-carousel-'));let selected=1;const calls=[];
+ const client={async callTool(name,args){calls.push({name,args});
+  if(name==='browser_tabs')return {text:'- 0: (current) [Original](https://chatgpt.com/c/11111111-2222-3333-4444-555555555555)'};
+  if(name==='browser_snapshot')return {text:`- button "已生成图像 ${selected}" [ref=e10]:\n  - img "已生成图像 ${selected}" [ref=e11]\n- group "生成的图像":\n  - button "显示生成的图像 1" ${selected===1?'[pressed]':''} [ref=e20]\n  - button "显示生成的图像 2" ${selected===2?'[pressed]':''} [ref=e21]`};
+  if(name==='browser_click'){assert.equal(args.target,'e21');selected=2;return {text:'selected'};}
+  if(name==='browser_wait_for')return {text:'ready'};
+  if(name==='browser_network_requests')return {text:'11. [GET] https://chatgpt.com/backend-api/estuary/content?id=output-a => [200] OK'+(selected===2?'\n12. [GET] https://chatgpt.com/backend-api/estuary/content?id=output-b => [200] OK':'')};
+  if(name==='browser_network_request'){await writeFile(args.filename,sizedPng(640,800,100000,args.index));return {text:'saved'};}
+  throw Error(`Unexpected tool ${name}`);
+ }};
+ const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run:{runId:'run-current',manifest:{capture_context:{chat_url:'https://chatgpt.com/c/11111111-2222-3333-4444-555555555555',browser_tab_index:0,network_request_count:10}}}});
+ assert.equal(result.state,'ready');assert.equal(result.files.length,2);assert.equal(calls.filter(c=>c.name==='browser_click').length,1);assert.equal(calls.some(c=>['browser_type','browser_press_key','browser_file_upload'].includes(c.name)),false);
+});
+
 const transparentPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const whitePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAT8sAAAAASUVORK5CYII=', 'base64');
 const twoByOnePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII=', 'base64');

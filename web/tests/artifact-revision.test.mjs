@@ -195,6 +195,7 @@ function fakeRevisionClient({ currentUrl = parentChatUrl } = {}) {
       if (name === 'browser_press_key' && args.key === 'Enter' && typedPrompt) submitted = true;
       if (name === 'browser_tabs') return { text: `- 0: (current) [Original conversation](${currentUrl})` };
       if (name === 'browser_snapshot') {
+        if(args.depth===20)return {text:'- textbox "询问 ChatGPT" [active] [ref=e50]\n- button "添加文件等内容" [ref=e51]'};
         if (submitted) return { text: `- article:\n  - paragraph: ${typedPrompt}` };
         if (snapshotIndex < stageSnapshots.length) return { text: stageSnapshots[snapshotIndex++] };
         return { text: '- textbox "与 ChatGPT 聊天" [active] [ref=e49]\n- button "发送提示" [ref=e140] [cursor=pointer]' };

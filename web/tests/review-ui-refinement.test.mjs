@@ -48,9 +48,10 @@ test('review UI exposes three numeric controls and four structured diagnostic gr
 });
 
 test('history import uses image-icon selectors with live selected-file counts', () => {
-  assert.equal((html.match(/class="history-image-picker"/g) || []).length, 3);
-  assert.equal((html.match(/class="image-picker-icon"/g) || []).length, 3);
-  assert.equal((html.match(/data-file-status/g) || []).length, 3);
+  const start=html.indexOf('id="historyImportForm"');const history=html.slice(start,html.indexOf('</form>',start));
+  assert.equal((history.match(/class="history-image-picker"/g) || []).length, 3);
+  assert.equal((history.match(/class="image-picker-icon"/g) || []).length, 3);
+  assert.equal((history.match(/data-file-status/g) || []).length, 3);
   assert.match(css, /\.history-file-input/);
   assert.match(css, /\.history-image-picker/);
   assert.match(app, /function updateHistoryFileStatus/);

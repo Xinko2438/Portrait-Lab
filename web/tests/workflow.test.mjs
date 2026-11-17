@@ -13,7 +13,7 @@ import {
   saveResultFiles,
   saveReview,
 } from '../src/run-store.mjs';
-import { ChatGptExecutor, buildGenerationPrompt, findComputerUploadRef } from '../src/chatgpt-executor.mjs';
+import { ChatGptExecutor, buildGenerationPrompt, findComputerUploadRef, findComposerRef, findVisibleSendRef } from '../src/chatgpt-executor.mjs';
 import { extractCurrentChatTab } from '../src/result-capture.mjs';
 import { evaluateReview } from '../src/review-policy.mjs';
 import { evaluateReferencePlan } from '../src/reference-policy.mjs';
@@ -22,6 +22,14 @@ import { ensureMcpServer } from '../src/mcp-process.mjs';
 
 const transparentPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const captureChatUrl = 'https://chatgpt.com/c/11111111-2222-3333-4444-555555555555';
+
+test('current no-id ChatGPT composer and button menu resolve by unique semantic refs',()=>{
+ assert.equal(findComposerRef('- textbox "询问 ChatGPT" [active] [ref=e33]'),'e33');
+ assert.equal(findComposerRef('- textbox "询问 ChatGPT" [ref=e33]\n- textbox "询问 ChatGPT" [ref=e44]'),null);
+ assert.equal(findComputerUploadRef('- button "添加照片和文件 从计算机上传" [ref=e70]'),'e70');
+ assert.equal(findVisibleSendRef('- button "发送" [ref=e71]'),'e71');
+ assert.equal(findVisibleSendRef('- button "停止发送" [ref=e71]'),null);
+});
 
 test('current ChatGPT add-photos-and-files menu item is accepted as the computer upload action', () => {
   const snapshot = '- menu:\n  - menuitem "添加照片和文件" [active] [ref=e777] [cursor=pointer]';
@@ -40,13 +48,14 @@ test('isolated server without a Playwright token degrades to token-required inst
   assert.deepEqual(result, { ready: false, owned: false, state: 'token_required', process: null });
 });
 
-function fakeClient({ snapshotTexts, fileUploadError, postSubmitSnapshotTexts, screenshotError, networkRequestsText, postSubmitNetworkRequestsText, postSubmitTabTexts } = {}) {
+function fakeClient({ snapshotTexts, composerSnapshots, fileUploadError, postSubmitSnapshotTexts, screenshotError, networkRequestsText, postSubmitNetworkRequestsText, postSubmitTabTexts } = {}) {
   const calls = [];
   let snapshotCount = 0;
   let postSubmitSnapshotCount = 0;
   let submitted = false;
   let typedPrompt = '';
   let postSubmitTabCount = 0;
+  let composerReads=0;
   const defaultSnapshots = [
     '- button "添加文件等" [active] [ref=e104]',
     '- generic [ref=e418] [cursor=pointer]:\n  - generic: 添加照片和文件\n  - generic: 从电脑上传',
@@ -71,6 +80,7 @@ function fakeClient({ snapshotTexts, fileUploadError, postSubmitSnapshotTexts, s
         return { text: `- 0: (current) [Capture test](${captureChatUrl})` };
       }
       if (name === 'browser_snapshot') {
+        if(args.depth===20){const snapshots=composerSnapshots||['- textbox "询问 ChatGPT" [active] [ref=e50]\n- button "添加文件等内容" [ref=e51]'];return {text:snapshots[Math.min(composerReads++,snapshots.length-1)]};}
         if (submitted) {
           const snapshots = postSubmitSnapshotTexts || [`- article:\n  - paragraph: ${typedPrompt}`];
           const text = snapshots[Math.min(postSubmitSnapshotCount, snapshots.length - 1)];
@@ -97,6 +107,34 @@ test('staged prompt snapshot stays exact and changed legacy text cannot be silen
  const count=client.calls.length;
  await assert.rejects(()=>executor.submitRun({run:{...run,prompt:'changed after staging'},confirmed:true}),/changed|重新装载/);
  assert.equal(client.calls.length,count);
+});
+
+test('staging waits for hydrated composer and resolves it again after current button-style upload',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'current-chatgpt-ui-'));const run=await preparedRun(root);
+ const client=fakeClient({composerSnapshots:[
+  '- textbox "询问 ChatGPT" [ref=e40]\n- button "添加文件等内容" [disabled] [ref=e41]',
+  '- textbox "询问 ChatGPT" [ref=e50]\n- button "添加文件等内容" [ref=e51]',
+  '- textbox "询问 ChatGPT" [active] [ref=e77]\n- button "添加文件等内容" [ref=e78]',
+ ],snapshotTexts:['- button "添加文件等内容" [active] [ref=e51]','- button "添加照片和文件 从计算机上传" [ref=e70]','- textbox "询问 ChatGPT" [active] [ref=e77]\n- button "发送" [ref=e90]']});
+ const executor=new ChatGptExecutor({clientFactory:()=>client});
+ const result=await executor.stageRun({run,confirmed:true});
+ assert.equal(result.state,'awaiting_submission_confirmation');
+ assert.deepEqual(client.calls.filter(c=>c.name==='browser_type').map(c=>c.args.target),['e50','e77']);
+ assert.equal(client.calls.filter(c=>c.name==='browser_click'&&c.args.target==='e70').length,1);
+ assert.equal(client.calls.filter(c=>c.name==='browser_file_upload').length,1);
+ assert.equal(client.calls.some(c=>c.name==='browser_wait_for'&&c.args.time===1),true);
+ assert.equal(client.calls.some(c=>c.name==='browser_type'&&c.args.submit),false);
+ assert.equal((await executor.submitRun({run,confirmed:true})).state,'submitted');
+ assert.equal(client.calls.filter(c=>c.name==='browser_press_key'&&c.args.key==='Enter').length,2,'one menu open and one explicit prompt send');
+});
+
+test('missing or ambiguous current composer stops before any upload or send',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'no-chatgpt-editor-'));const run=await preparedRun(root);
+ const client=fakeClient({composerSnapshots:['- heading "请稍候"']});
+ const result=await new ChatGptExecutor({clientFactory:()=>client}).stageRun({run,confirmed:true});
+ assert.equal(result.state,'provider_error');assert.match(result.message,/尚未就绪/);
+ assert.equal(client.calls.some(c=>['browser_type','browser_file_upload','browser_drop'].includes(c.name)),false);
+ assert.equal(client.calls.some(c=>c.name==='browser_press_key'&&c.args.key==='Enter'),false);
 });
 test('staged references and preparation revision are bound even when prompt is unchanged',async()=>{
  const root=await mkdtemp(join(tmpdir(),'staged-revision-'));const run=await preparedRun(root);run.manifest.preparation_revision_id='prep_old';const client=fakeClient();const executor=new ChatGptExecutor({clientFactory:()=>client});
@@ -364,6 +402,7 @@ test('staging requires explicit upload confirmation and never submits', async ()
     'browser_wait_for',
     'browser_tabs',
     'browser_press_key',
+    'browser_snapshot',
     'browser_type',
     'browser_press_key',
     'browser_snapshot',
@@ -371,6 +410,7 @@ test('staging requires explicit upload confirmation and never submits', async ()
     'browser_snapshot',
     'browser_press_key',
     'browser_file_upload',
+    'browser_snapshot',
     'browser_type',
     'browser_take_screenshot',
   ]);
@@ -475,7 +515,7 @@ test('staging falls back to official file drop when the current ChatGPT UI does 
   assert.equal(promptIndex > dropIndex, true);
   assert.deepEqual(client.calls[dropIndex].args, {
     element: 'ChatGPT message composer',
-    target: '#prompt-textarea',
+    target: 'e50',
     paths: [
       ...run.manifest.identity_references.map((item) => item.path),
       ...run.manifest.template_references.map((item) => item.path),
@@ -1101,8 +1141,7 @@ test('first-page primary action is the single explicit save, upload, and send au
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(html, /id="prepareRun"[^>]*>开始生成</);
   assert.match(html, /点击后通过 ChatGPT 网页版生成/);
-  assert.match(html, /id="sendSummary"/);
-  assert.match(html, /id="sendSummaryList"/);
+  assert.doesNotMatch(html, /id="sendSummary(?:List)?"/);
   assert.match(html, /id="sendPromptPreviewDetails"/);
   assert.match(app, /async function stageAndSubmitRunOnce/);
   assert.match(app, /derivePrimaryAction/);

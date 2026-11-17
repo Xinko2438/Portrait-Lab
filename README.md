@@ -9,7 +9,9 @@
 ![Fabric.js](https://img.shields.io/badge/Fabric.js-7.4-34465B?style=flat-square)
 ![Windows](https://img.shields.io/badge/Platform-Windows-527EB2?style=flat-square)
 
-![Portrait Lab 工作台](docs/workbench.jpg)
+![Portrait Lab 创作与参考工作台](docs/workbench.jpg)
+
+![Portrait Lab 结果保存与导入](docs/results-capture.jpg)
 
 ## 产品流程
 
@@ -71,7 +73,7 @@ cd web
 npm test
 ```
 
-本次公开快照在 Windows 上执行 **554 项测试，554 通过**，覆盖账本、幂等与恢复、客户参考图范围、批注、评审、配置保管和模拟 HTTP 流程。依赖私人模板目录或额外浏览器环境的集成用例未放入默认公开测试集。详见 [验证与导出说明](docs/VALIDATION.md)。
+本次公开快照在 Windows 上执行 **561 项测试，561 通过**，覆盖账本、幂等与恢复、客户参考图范围、批注、评审、配置保管和模拟 HTTP 流程。依赖私人模板目录或额外浏览器环境的集成用例未放入默认公开测试集。详见 [验证与导出说明](docs/VALIDATION.md)。
 
 这些检查验证程序行为；人物还原、画面质量与模型输出仍需使用者以实际素材评估。项目中的模板表现和提示词实验记录，不代表已经训练出通用审美模型。
 

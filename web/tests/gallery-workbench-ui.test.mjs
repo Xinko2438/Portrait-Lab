@@ -8,7 +8,7 @@ const appUrl = new URL('../public/app.js', import.meta.url);
 
 test('workbench uses four bounded stages instead of a single long-form stack', async () => {
   const html = await readFile(htmlUrl, 'utf8');
-  assert.match(html, /<link rel="icon"[^>]*href="\/brand\/portrait-lab\.svg"/);
+  assert.match(html, /<link rel="icon"[^>]*href="\/brand\/portrait-lab.svg"/);
   assert.match(html, /class="stage-navigation"/);
   for (const stage of ['references', 'generation', 'results', 'review']) {
     assert.match(html, new RegExp(`data-stage-panel="${stage}"`));

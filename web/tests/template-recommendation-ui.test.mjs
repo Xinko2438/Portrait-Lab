@@ -10,13 +10,14 @@ test('image-first create screen shows only the choices needed to start and uses 
   const html=await readFile(htmlUrl,'utf8');
   assert.match(html,/添加客户照片后即可开始；模板和补充要求可选/);
   assert.match(html,/一张清晰照片就可以/);
-  assert.match(html,/更多设置（一般不用）/);
+  assert.match(html,/id="openTaskOptions"[^>]*aria-haspopup="dialog"/);
   assert.match(html,/id="prepareRun"[^>]*>开始生成</);
   assert.doesNotMatch(html,/选择任务意图|选择目标结果|专用生图提示词|人脸底线已启用|明确覆盖/);
   const advanced=html.slice(html.indexOf('id="moreTaskSettings"'),html.indexOf('class="customer-visual-status"'));
   for(const id of ['newCustomerFields','intendedUse','apiOperation','apiImageSize','apiImageQuality','apiMask','sendPromptPreviewDetails'])assert.match(advanced,new RegExp(`id="${id}"`));
-  const main=html.slice(html.indexOf('<div class="task-brief-scroll">'),html.indexOf('<details class="advanced-reference-settings"'));
+  const main=html.slice(html.indexOf('<div class="task-brief-scroll">'),html.indexOf('<section class="task-options-entry"'));
   for(const id of ['generationMode','userSupplement','apiImageCount'])assert.match(main,new RegExp(`id="${id}"`));
+  assert.ok(html.indexOf('id="existingCustomerFields"')<html.indexOf('id="identityUploadWorkspace"'));
 });
 
 test('recommendation section exists in workbench task-brief with triggers and container', async () => {

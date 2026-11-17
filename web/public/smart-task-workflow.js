@@ -25,14 +25,16 @@ export function createSmartTaskWorkflow({getForm,isEnabled,onResolution,onRecomm
    const key=await inputKey(form);if(token!==revision)return null;
    const hasImages=form.getAll('identity').some(f=>typeof f!=='string'&&f.size)||form.getAll('identityReferenceOrdinals').length||form.get('useStoredReferences')==='true'||(form.get('sourceRunId')&&reusedIdentity(form).length);
    if(hasImages&&(key!==analysisKey||forceAnalysis)){
-    analysisKey=key;analyzing=true;onStatus('正在看图分析；切换模板和参数不会重复分析。');
+    analysisKey=key;analyzing=true;onStatus('正在看图分析；切换模板和参数不会重复分析。',{state:'analyzing'});
     if(forceAnalysis){form.set('reanalyze','true');form.set('analysisIdempotencyKey',crypto.randomUUID());}
     const flight=request('/api/customer-visual-analysis',{method:'POST',body:form});analysisFlight=flight;
     try{const data=await flight;if(token!==revision)return null;config=data.config;
       const entries=data.entries||[];const ready=entries.filter(e=>e.state==='ready');
       const fullyAnalyzed=ready.filter(e=>!e.visual_analysis_state||e.visual_analysis_state==='ready');
-      onStatus(fullyAnalyzed.length===entries.length&&entries.length?`已分析 ${ready.length} 张客户图（同图使用缓存）；用于视觉匹配，不判断真实人格。`:ready.some(e=>e.source?.includes('human'))?'已采用人工确认的照片资料；视觉风格分析尚未完成，不会自动重试。':entries.some(e=>e.state==='disabled')?'看图分析未开启；当前仅按模板和手动设置推荐。':'部分照片分析未完成；不会自动重试，可继续按模板操作。');
-    }catch(error){if(token===revision)onStatus(`看图分析未完成：${error.message}。可继续选模板，不自动重试。`);}
+      const complete=fullyAnalyzed.length===entries.length&&entries.length>0;
+      const disabled=entries.some(e=>e.state==='disabled');
+      onStatus(complete?`已分析 ${ready.length} 张客户图（同图使用缓存）；用于视觉匹配，不判断真实人格。`:ready.some(e=>e.source?.includes('human'))?'已采用人工确认的照片资料；视觉风格分析尚未完成，不会自动重试。':disabled?'看图分析未开启；当前仅按模板和手动设置推荐。':'部分照片分析未完成；不会自动重试，可继续按模板操作。',{state:complete?'ready':disabled?'idle':'warning'});
+    }catch(error){if(token===revision)onStatus(`看图分析未完成：${error.message}。可继续选模板，不自动重试。`,{state:'error'});}
     finally{if(analysisFlight===flight){analysisFlight=null;analyzing=false;if(token!==revision&&isEnabled())schedule({semantic:false});}}
    }
   }
@@ -41,7 +43,7 @@ export function createSmartTaskWorkflow({getForm,isEnabled,onResolution,onRecomm
   if(recommend&&(resolution.parameters&&!(resolution.blocking_issues||[]).some(i=>['identity_required','multiple_faces','identity_unusable'].includes(i.code))))await onRecommend(resolution);
   return resolution;
  }
- function schedule({semantic=true}={}){if(semantic){revision++;onRevision();}clearTimeout(timer);if(!isEnabled())return;const token=revision;timer=setTimeout(()=>resolveNow({analyze:true,recommend:true}).catch(e=>{if(token===revision)onStatus(e.message);}),450);}
+ function schedule({semantic=true}={}){if(semantic){revision++;onRevision();}clearTimeout(timer);if(!isEnabled())return;const token=revision;timer=setTimeout(()=>resolveNow({analyze:true,recommend:true}).catch(e=>{if(token===revision)onStatus(e.message,{state:'error'});}),450);}
  function changed(event){
   const target=event?.target;if(!target)return;
   const entry=Object.entries(fieldIds).find(([,id])=>target.id===id);
@@ -53,11 +55,11 @@ export function createSmartTaskWorkflow({getForm,isEnabled,onResolution,onRecomm
   const reset=event.target.closest('[data-smart-auto]');if(reset){manual=setManualParameter(manual,reset.dataset.smartAuto,null);schedule();}
   if(event.target.closest('[data-smart-resolve-conflicts]')){for(const c of resolution?.conflicts||[])manual=setManualParameter(manual,c.field,null);schedule();}
  });
- document.getElementById('reanalyzeCustomer')?.addEventListener('click',()=>{revision++;onRevision();clearTimeout(timer);resolveNow({analyze:true,recommend:true,forceAnalysis:true}).catch(e=>onStatus(e.message));});
+ document.getElementById('reanalyzeCustomer')?.addEventListener('click',()=>{revision++;onRevision();clearTimeout(timer);resolveNow({analyze:true,recommend:true,forceAnalysis:true}).catch(e=>onStatus(e.message,{state:'error'}));});
  async function prepare(){clearTimeout(timer);const token=revision;if(analysisFlight)await analysisFlight.catch(()=>{});if(token!==revision)throw new Error('输入已更新，已取消这次发送，请核对后再点击发送。');const value=await resolveNow({analyze:true,recommend:false});if(!value)throw new Error('输入已更新，请核对后再点击发送。');if(!value.ready)throw new Error(value.blocking_issues[0]?.message||value.conflicts[0]?.message||'请检查参考图');return value;}
  return {schedule,changed,prepare,resolveNow,get resolution(){return resolution;},get manual(){return structuredClone(manual);},get analyzing(){return analyzing;},formNow,
   restore(overrides={}){manual={};for(const key of SMART_FIELDS)if(overrides[key]!=null)manual=setManualParameter(manual,key,overrides[key]);revision++;onRevision();resolution=null;},
-  clear(){revision++;onRevision();clearTimeout(timer);manual={};resolution=null;analysisKey=null;},
+  clear(){revision++;onRevision();clearTimeout(timer);manual={};resolution=null;analysisKey=null;onStatus('选择客户图后自动推荐。',{state:'idle'});},
   async loadConfig(){config=await request('/api/customer-visual-analysis/config');return config;},
   async saveConfig(input){config=await request('/api/customer-visual-analysis/config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});analysisKey=null;schedule();return config;},
  };

@@ -36,8 +36,6 @@ export function initGenerationMode({ getRun, buildForm, acceptResult, showMessag
       document.querySelector('#captureRun').disabled=false;
       document.querySelector('#captureRun').textContent='查看 / 恢复 API 结果';
     }
-    const summary=document.querySelector('#generationChannelSummary');
-    if(summary) summary.textContent=apiMode?`API 生图 · ${document.querySelector('#apiImageCount').value} 张`:'ChatGPT 网页版';
     const note=document.querySelector('.task-submit-note');
     if(note) note.textContent=apiMode?'点击后开始 API 生图；失败不会自动重试':'点击后通过 ChatGPT 网页版生成；失败不会自动重试';
     refreshSummary();

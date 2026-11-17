@@ -12,6 +12,16 @@ test('image-first defaults allow unknown angle without inventing frontal coverag
  const r=resolveSmartTask({customerId:'cust_1234567890abcdef',identityCount:1,templateCount:1});
  assert.equal(r.ready,true);assert.equal(r.task_intent.use_case,'custom');assert.equal(r.task_intent.target_face_angle,'follow_identity');assert.deepEqual(r.reference_plan.identity_angles,[]);assert.equal(r.reference_plan.target_angle,'follow_identity');
 });
+
+test('analysis reports explicit loading, success, disabled and failure states without language inference',async t=>{
+ const previousDocument=globalThis.document;t.after(()=>{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;});
+ globalThis.document={addEventListener(){},querySelectorAll(){return [];},getElementById(){return null;}};
+ for(const state of ['ready','idle','error']){
+  const states=[];const resolution=resolveSmartTask({customerId:'cust_1234567890abcdef',identityCount:1,templateCount:1});
+  const workflow=createSmartTaskWorkflow({getForm:()=>{const form=new FormData();form.set('sourceRunId','fixture');form.set('reuseReferences',JSON.stringify([{role:'identity',ordinal:0}]));return form;},isEnabled:()=>true,onResolution(){},onRecommend(){},onStatus:(_message,detail)=>states.push(detail.state),fetchImpl:async url=>url==='/api/customer-visual-analysis'?(state==='error'?Response.json({error:'fixture unavailable'},{status:503}):Response.json({entries:[{state:state==='ready'?'ready':'disabled'}]})):Response.json({resolution})});
+  await workflow.resolveNow({analyze:true});assert.deepEqual(states,['analyzing',state]);workflow.clear();assert.equal(states.at(-1),'idle');
+ }
+});
 test('template fills automatic fields while manual constraints stay locked and recommendation does not follow template',()=>{
  const manual=setManualParameter({},'targetFraming','full_body');const input={customerId:'cust_1234567890abcdef',identityCount:1,templateCount:1,manual};
  const a=resolveSmartTask({...input,template:{selection_tags:{portrait_scale:'bust',style_category:'clean_magazine'}}});

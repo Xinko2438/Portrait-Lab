@@ -149,12 +149,12 @@ async function selectCaptureTab(client, context) {
 }
 
 function generatedImageVisible(snapshotText) {
-  return /img\s+"(?:已生成图片|Generated image)/i.test(String(snapshotText || ''));
+  return /img\s+"(?:已生成图片|已生成图像|Generated image)/i.test(String(snapshotText || ''));
 }
 
 function conversationAccessUnavailable(snapshotText) {
   const text = String(snapshotText || '');
-  return /textbox\s+"(?:与 ChatGPT 聊天|Message ChatGPT)"\s+\[disabled\]/i.test(text)
+  return /textbox\s+"(?:与 ChatGPT 聊天|Message ChatGPT|询问 ChatGPT)"\s+\[disabled\]/i.test(text)
     && /button\s+"(?:分享|Share)[^"]*"\s+\[disabled\]/i.test(text);
 }
 
@@ -162,7 +162,7 @@ export function generatedImageButtonRefs(snapshotText) {
   const lines = String(snapshotText || '').split(/\r?\n/);
   const refs = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!/img\s+"(?:已生成图片|Generated image)/i.test(lines[index])) continue;
+    if (!/img\s+"(?:已生成图片|已生成图像|Generated image)/i.test(lines[index])) continue;
     for (let parent = index - 1; parent >= Math.max(0, index - 4); parent -= 1) {
       if (!/\bbutton\b/.test(lines[parent])) continue;
       const ref = lines[parent].match(/\[ref=([a-zA-Z0-9_:-]+)\]/)?.[1];
@@ -171,6 +171,25 @@ export function generatedImageButtonRefs(snapshotText) {
     }
   }
   return refs;
+}
+
+function generatedImageCarousel(snapshotText) {
+  const lines=String(snapshotText||'').split(/\r?\n/);
+  const group=lines.findLastIndex(line=>/\bgroup\s+"(?:生成的图像|Generated images)"/.test(line));
+  if(group<0)return [];
+  const indent=lines[group].match(/^\s*/)[0].length;
+  const choices=[];
+  for(const line of lines.slice(group+1)){
+    if(line.trim()&&line.match(/^\s*/)[0].length<=indent)break;
+    const ordinal=line.match(/\bbutton\s+"(?:显示生成的图像|Show generated image)\s+(\d+)"/i)?.[1];
+    const ref=line.match(/\[ref=([a-zA-Z0-9_:-]+)\]/)?.[1];
+    if(ordinal&&ref&&!line.includes('[disabled]'))choices.push({ordinal:Number(ordinal),ref,selected:line.includes('[pressed]')});
+  }
+  return choices;
+}
+
+export function generatedImageCarouselRefs(snapshotText) {
+  return generatedImageCarousel(snapshotText).map(choice=>choice.ref);
 }
 
 async function generatedRequests(client, baseline) {
@@ -257,7 +276,7 @@ export class ChatGptMcpResultCapture {
         state: 'capture_not_ready',
         message: selected.reopened
           ? '已重新打开原 ChatGPT 对话，但生成结果还在加载，请稍后再次检测。'
-          : 'No new generated image is visible in the submitted conversation',
+          : '当前对话暂未显示新的生成图；检测不会重新发送任务。',
         files: [],
         captureContext,
       };
@@ -266,6 +285,20 @@ export class ChatGptMcpResultCapture {
     if (!generatedRefs.length) {
       return { state: 'capture_not_ready', message: 'Generated image control was not found in the submitted conversation', files: [], captureContext };
     }
+    const gallery=generatedImageCarousel(snapshot.text);
+    if(gallery.length>this.maxArtifacts)return {state:'capture_ambiguous',message:'生成图数量超出本次保存上限，请人工核对。',files:[],captureContext};
+    // Only visit selectors in the latest observed generated-image group. Never edit or submit.
+    for(const item of gallery){
+      const current=generatedImageCarousel(snapshot.text).find(choice=>choice.ordinal===item.ordinal);
+      if(!current)return {state:'capture_not_ready',message:'生成图组已变化，请稍后重新检测；不会重新发送。',files:[],captureContext};
+      if(!current.selected){
+        await client.callTool('browser_click',{element:`Show generated image ${item.ordinal}`,target:current.ref});
+        await client.callTool('browser_wait_for',{time:1});
+        snapshot=await client.callTool('browser_snapshot',{});
+        if(!generatedImageVisible(snapshot.text))return {state:'capture_not_ready',message:'生成图仍在加载，请稍后检测。',files:[],captureContext};
+      }
+    }
+    const generatedControlCount=Math.max(generatedRefs.length,gallery.length);
     const baseline = captureContext.network_request_count;
     let uniqueRequests = await generatedRequests(client, baseline);
     const referenceAssetIds = new Set(Array.isArray(captureContext.reference_asset_ids) ? captureContext.reference_asset_ids : []);
@@ -336,8 +369,8 @@ export class ChatGptMcpResultCapture {
       source: candidate.source,
     }));
     if (!files.length) return { state: 'capture_not_ready', message: 'Only uploaded references or generated-control thumbnails were found; the full-size result is not ready', files: [], captureContext };
-    if (files.length > generatedRefs.length) {
-      return { state: 'capture_ambiguous', message: `Found ${files.length} unassigned image responses for ${generatedRefs.length} generated image controls; manual review is required`, files: [], captureContext };
+    if (files.length > generatedControlCount) {
+      return { state: 'capture_ambiguous', message: `Found ${files.length} unassigned image responses for ${generatedControlCount} generated image controls; manual review is required`, files: [], captureContext };
     }
     if (files.length > this.maxArtifacts) {
       return { state: 'capture_ambiguous', message: `Found ${files.length} distinct generated images; manual import is required`, files: [], captureContext };

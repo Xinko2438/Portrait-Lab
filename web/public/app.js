@@ -139,8 +139,6 @@ const elements = {
   identityAngleFallback: document.querySelector('.identity-angle-fallback'),
   advancedReferenceSettings: document.querySelector('.advanced-reference-settings'),
   moreTaskSettings: document.querySelector('#moreTaskSettings'),
-  sendSummary: document.querySelector('#sendSummary'),
-  sendSummaryList: document.querySelector('#sendSummaryList'),
   sendPromptPreviewDetails: document.querySelector('#sendPromptPreviewDetails'),
   reviewedCount: document.querySelector('#reviewedCount'),
   qualifiedCount: document.querySelector('#qualifiedCount'),
@@ -680,7 +678,7 @@ function updateStageAvailability(manifest) {
 function renderBrowserStatus(data) {
   elements.appState.textContent = '已运行';
   elements.appState.className = 'good-text';
-  elements.browserState.textContent = data.browser.ready ? '已连接' : data.browser.message;
+  elements.browserState.textContent = data.browser.ready ? '已连接' : data.browser.state === 'not_checked' ? '未检查' : '需检查';
   elements.browserState.title = data.browser.message;
   elements.browserState.className = data.browser.ready ? 'good-text' : 'warn-text';
 }
@@ -750,14 +748,12 @@ function currentSendSummary() {
 }
 
 function renderSendSummary() {
-  if (!elements.sendSummaryList) return;
   const summary = currentSendSummary();
-  if(smartResolved?.warnings?.some(w=>w.code==='face_follows_identity'))summary.lines.push('脸部朝向跟随客户图，动作与风格跟随模板。');
-  elements.sendSummaryList.innerHTML = summary.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
   const missing = !currentRunId && !summary.identities.count && !(document.querySelector('#generationMode')?.value === 'api' && document.querySelector('#apiOperation')?.value === 'generate');
   document.querySelector('#prepareRun')?.setAttribute('aria-disabled', String(missing));
   const hint = document.querySelector('#creationReadiness');
-  if (hint) hint.textContent = missing ? '先添加一张客户照片，即可继续' : '参考已就绪；模板可选，点击后开始生成';
+  if (hint) { hint.hidden = !missing; hint.textContent = missing ? '先添加一张客户照片，即可继续' : ''; }
+  if (!missing && elements.prepareResult.textContent === '请先添加一张客户照片，或从已有客户中选择照片。') elements.prepareResult.textContent = '';
 }
 
 
@@ -1438,7 +1434,24 @@ function renderArtifactInspector(manifest) {
   elements.artifactInspector.append(fragment);
 }
 
+function renderCaptureBody(manifest=currentManifest,{busy=false}={}){
+  const artifacts=manifest?.artifacts||[];
+  const state=manifest?.capture?.state||'';
+  const submitted=Number(manifest?.submission_attempt_count||0)>0||['submitted','submission_uncertain','capture_pending'].includes(manifest?.status);
+  const warning=['capture_ambiguous','capture_unverified','capture_access_mismatch','capture_reopen_failed'].includes(state)||['provider_error','provider_rate_limited'].includes(manifest?.status);
+  const saved=artifacts.length>0;
+  document.getElementById('captureOverview').dataset.state=busy?'busy':saved?'saved':warning?'warning':'waiting';
+  document.getElementById('captureOverview').setAttribute('aria-busy',String(busy));
+  document.getElementById('captureStateIcon').textContent=busy?'…':saved?'✓':warning?'!':'·';
+  document.getElementById('captureStateTitle').textContent=busy?'正在检测原图':saved?`已保存 ${artifacts.length} 张图片`:warning?'需要检查任务':submitted?'等待生成结果':'等待任务提交';
+  document.getElementById('captureStateDetail').textContent=saved?'点击下方图片查看原图':warning?'可再次检测，或使用右侧手动导入。':submitted?'可检测原图，也可在右侧导入。':'提交后只检测对应对话中的结果。';
+  document.getElementById('captureProcess').hidden=saved;
+  const grid=document.getElementById('captureOutputGrid');grid.hidden=!saved;
+  grid.innerHTML=artifacts.map((artifact,index)=>`<button class="capture-output" type="button" data-capture-preview="${index}" aria-label="查看候选 ${artifact.ordinal||index+1} 原图"><img src="/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file" alt="候选 ${artifact.ordinal||index+1}"><span>候选 ${artifact.ordinal||index+1}</span><small>${artifact.width} × ${artifact.height}</small></button>`).join('');
+}
+
 function renderArtifacts(manifest) {
+  renderCaptureBody(manifest);
   const artifacts = manifest.artifacts || [];
   const reviews = manifest.artifact_reviews || {};
   const annotations = manifest.artifact_annotations || {};
@@ -1622,6 +1635,7 @@ function renderRun(data) {
   const count = manifest.artifacts?.length || 0;
   elements.artifactImportForm.querySelector('input[type="file"]').disabled = count >= 4;
   elements.artifactImportForm.querySelector('button[type="submit"]').disabled = count >= 4;
+  renderImportAction();
   if (count) elements.resultMessage.textContent = `已保存 ${count} 张独立候选图。每张图都有自己的文件、哈希和评分记录。`;
   else if (manifest.capture?.message) elements.resultMessage.textContent = manifest.capture.message;
   renderReviewReferences(manifest);
@@ -1655,6 +1669,7 @@ function returnToNewTask(notice) {
   currentRunId = null;
   activeReviewViewOverride = '';
   currentManifest = null;
+  renderCaptureBody(null);
   resultWorkbench?.clear();
   smartTaskWorkflow?.clear();smartResolved=null;smartRestoredRunId=null;
   activeReuseDraft=null;reuseFileDescriptors.clear();
@@ -1977,6 +1992,39 @@ function updateHistoryFileStatus(input) {
 
 for (const input of elements.historyImportForm.querySelectorAll('.history-file-input')) {
   input.addEventListener('change', () => updateHistoryFileStatus(input));
+}
+
+function renderImportAction(){
+  const input=document.getElementById('artifactResults');
+  const count=input.files?.length||0;
+  const actions=document.getElementById('artifactImportActions');
+  actions.hidden=false;
+  const button=actions.querySelector('button');
+  button.textContent=count?`导入 ${count} 张图片`:'导入图片';
+  button.disabled=!count||input.disabled||!input.validity.valid;
+}
+const uploadPreviewUrls=new WeakMap();
+for(const input of document.querySelectorAll('.polished-file-input')){
+  const update=()=>{
+    updateHistoryFileStatus(input);
+    for(const url of uploadPreviewUrls.get(input)||[])URL.revokeObjectURL(url);
+    const preview=document.getElementById(input.dataset.uploadPreview);
+    preview.replaceChildren();
+    const files=[...input.files];const urls=[];
+    const limit=Number(input.dataset.maxFiles)||1;
+    input.setCustomValidity(files.length>limit?`最多选择 ${limit} 张图片。`:'');
+    input.setAttribute('aria-invalid',String(files.length>limit));
+    for(const file of files){
+      const item=document.createElement('div'),img=document.createElement('img'),name=document.createElement('span'),meta=document.createElement('small');
+      img.addEventListener('load',()=>{meta.textContent=`${img.naturalWidth} × ${img.naturalHeight}`;});
+      img.addEventListener('error',()=>{meta.textContent='无法预览';});
+      const url=URL.createObjectURL(file);urls.push(url);img.src=url;img.alt=file.name;name.textContent=file.name;item.append(img,name,meta);preview.append(item);
+    }
+    uploadPreviewUrls.set(input,urls);
+    if(input.id==='artifactResults')renderImportAction();
+  };
+  input.addEventListener('change',update);
+  input.form?.addEventListener('reset',()=>requestAnimationFrame(update));
 }
 
 elements.historyImportForm.addEventListener('submit', async (event) => {
@@ -2840,7 +2888,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
     .map((id) => document.querySelector(`#${id}`))
     .find((control) => !control.value);
   if (missingSetting && !smartTaskWorkflow) {
-    elements.advancedReferenceSettings.open = true;
+    elements.advancedReferenceSettings.showModal();
     elements.prepareResult.textContent = '请先确认目标景别和本次出图角度。';
     missingSetting.focus();
     primaryActionBusy = false;
@@ -2932,6 +2980,11 @@ elements.submitRun.addEventListener('click', async () => {
   }
 });
 
+document.getElementById('captureOutputGrid').addEventListener('click',event=>{
+  const trigger=event.target.closest('[data-capture-preview]');if(!trigger||!currentManifest)return;
+  const items=(currentManifest.artifacts||[]).map((artifact,index)=>({kind:'generated',url:`/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file`,caption:`候选 ${artifact.ordinal||index+1}`}));
+  openMediaPreview(items,Number(trigger.dataset.capturePreview),trigger);
+});
 elements.captureRun.addEventListener('click', async () => {
   if (!currentRunId) return;
   if(currentManifest?.image_api){
@@ -2940,6 +2993,7 @@ elements.captureRun.addEventListener('click', async () => {
     finally{setBusy(elements.captureRun,false);generationMode.sync();}return;
   }
   setBusy(elements.captureRun, true, '正在检测');
+  renderCaptureBody(currentManifest,{busy:true});
   elements.resultMessage.textContent = '正在核对当前对话中的新图片资源；不会提交新任务。';
   try {
     const data = await api(`/api/runs/${currentRunId}/capture`, { method: 'POST' });
@@ -2957,17 +3011,19 @@ elements.captureRun.addEventListener('click', async () => {
 
 elements.artifactImportForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  const form=event.currentTarget;
   if (!currentRunId) return;
-  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const button = form.querySelector('button[type="submit"]');
   setBusy(button, true, '正在导入');
   try {
-    const data = await api(`/api/runs/${currentRunId}/artifacts/import`, { method: 'POST', body: new FormData(event.currentTarget) });
+    const data = await api(`/api/runs/${currentRunId}/artifacts/import`, { method: 'POST', body: new FormData(form) });
     elements.resultMessage.textContent = `已保存 ${data.artifacts.length} 张独立候选图。`;
-    event.currentTarget.reset();
+    form.reset();
   } catch (error) {
     elements.resultMessage.textContent = `无法导入结果：${error.message}`;
   } finally {
     setBusy(button, false);
+    renderImportAction();
     const data = await refreshRun().catch(() => null);
     if (data?.manifest?.artifacts?.length) setStage('review');
   }
@@ -3251,7 +3307,15 @@ smartTaskWorkflow=createSmartTaskWorkflow({getForm:getSmartDraftForm,isEnabled:s
   onRevision:()=>{recommendationController.invalidatePendingRecommendations();smartResolved=null;},
   onResolution:resolution=>{smartResolved=resolution;const missingIdentity=resolution.blocking_issues.some(i=>i.code==='identity_required');elements.recommendationsSection.hidden=missingIdentity;if(resolution.blocking_issues.some(i=>['identity_required','multiple_faces','identity_unusable'].includes(i.code)))elements.recommendationsContainer.hidden=true;renderSendSummary();},
   onRecommend:async resolution=>{if(recommendationController.matchesTaskBrief(resolution.recommendation_brief)){renderRecommendationState();return;}await requestActiveRecommendation(true);},
-  onStatus:message=>{const status=document.querySelector('#customerVisualStatus'),panel=status.closest('.customer-visual-status');status.textContent=message;panel.hidden=/^选择客户图/.test(message);},
+  onStatus:(message,{state='idle'}={})=>{
+    document.querySelector('#customerVisualStatus').textContent=message;
+    const notice=document.querySelector('#customerVisualNotice');
+    notice.dataset.state=state;
+    notice.hidden=!['analyzing','warning','error'].includes(state);
+    notice.textContent=state==='analyzing'?'正在分析照片…':message;
+    notice.setAttribute('aria-busy',String(state==='analyzing'));
+    document.querySelector('#reanalyzeCustomer').disabled=state==='analyzing';
+  },
 });
 document.body.dataset.smartTask='enabled';
 const smartFieldIds={useCase:'intendedUse',targetFraming:'targetFraming',targetFaceAngle:'targetIntentAngle',layoutIntent:'layoutIntent',styleCategory:'smartStyleCategory'};
@@ -3259,6 +3323,27 @@ for(const [field,id]of Object.entries(smartFieldIds)){const control=document.get
 document.querySelector('#intendedUse').value='custom';
 document.querySelector('#targetAngle').required=false;
 document.querySelector('#customerName').placeholder='可稍后命名，不影响开始';
+const taskOptionsDialog=document.querySelector('#taskOptionsDialog');
+const taskOptionsBody=document.querySelector('#taskOptionsBody');
+const taskOptionsTrigger=document.querySelector('#openTaskOptions');
+function updateTaskOptionsScroll(){
+  const scrollSurface=getComputedStyle(taskOptionsBody).overflowY==='visible'?taskOptionsDialog:taskOptionsBody;
+  const remaining=scrollSurface.scrollHeight-scrollSurface.clientHeight-scrollSurface.scrollTop;
+  const overflows=scrollSurface.scrollHeight>scrollSurface.clientHeight+2;
+  taskOptionsDialog.dataset.scrollable=String(overflows);
+  taskOptionsDialog.dataset.scrolled=String(scrollSurface.scrollTop>2);
+  taskOptionsDialog.dataset.moreBelow=String(remaining>3);
+  document.querySelector('#taskOptionsScrollHint').textContent=overflows?(remaining>3?'下方还有设置 · 向下滚动':'已到底部 · 全部设置已显示'):'全部设置已显示';
+}
+taskOptionsTrigger.addEventListener('click',()=>{taskOptionsDialog.showModal();requestAnimationFrame(updateTaskOptionsScroll);});
+for(const id of ['closeTaskOptions','doneTaskOptions'])document.getElementById(id).addEventListener('click',()=>taskOptionsDialog.close());
+taskOptionsDialog.addEventListener('close',()=>{taskOptionsTrigger.focus({preventScroll:true});renderSendSummary();});
+taskOptionsDialog.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input,select'))event.preventDefault();});
+taskOptionsDialog.addEventListener('click',event=>{if(event.target!==taskOptionsDialog)return;const r=taskOptionsDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)taskOptionsDialog.close();});
+taskOptionsBody.addEventListener('scroll',updateTaskOptionsScroll,{passive:true});
+taskOptionsDialog.addEventListener('scroll',updateTaskOptionsScroll,{passive:true});
+new ResizeObserver(updateTaskOptionsScroll).observe(taskOptionsBody);
+document.querySelector('#configureImageApi').addEventListener('click',()=>taskOptionsDialog.close(),true);
 const more=document.querySelector('#moreTaskSettings .advanced-settings-body');
 if(more){more.prepend(document.querySelector('#intendedUse').closest('.field'));}
 const modeField=document.querySelector('#generationMode').closest('.field');modeField.classList.add('generation-mode-field');document.querySelector('.task-brief-heading').after(modeField);

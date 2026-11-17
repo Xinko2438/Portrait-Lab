@@ -28,7 +28,8 @@ export function classifyBrowserProbe(message = '') {
   if (/ECONNREFUSED|fetch failed|service unavailable/i.test(safe)) {
     return { ready: false, state: 'service_unavailable', message: '本地 Playwright 服务尚未启动。' };
   }
-  return { ready: true, state: 'ready', message: 'Playwright 已连接默认 Chrome。' };
+  if(safe.trim())return {ready:false,state:'probe_failed',message:safe};
+  return { ready: true, state: 'bridge_ready', message: '浏览器桥接已连接；ChatGPT 编辑区将在装载任务前核对。' };
 }
 
 export async function probeBrowser(endpoint = 'http://localhost:8931/mcp') {

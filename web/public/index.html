@@ -94,9 +94,11 @@
               <div class="field"><label for="apiImageCount">生成张数</label><select id="apiImageCount"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
             </div>
             <input type="hidden" id="prompt" name="prompt" value="">
-            <details class="advanced-reference-settings" id="moreTaskSettings">
-              <summary>更多设置（一般不用） <small>系统已自动处理</small></summary>
-              <div class="advanced-settings-body">
+            <section class="task-options-entry" id="moreTaskSettings">
+              <button type="button" id="openTaskOptions" class="task-options-trigger" aria-haspopup="dialog" aria-controls="taskOptionsDialog"><span><strong>更多设置</strong><small>用途、风格与画面细节 · 可选</small></span><span class="task-options-arrow" aria-hidden="true">›</span></button>
+              <dialog class="advanced-reference-settings task-options-dialog" id="taskOptionsDialog" aria-labelledby="taskOptionsTitle" aria-describedby="taskOptionsDescription">
+                <header class="task-options-header"><div><h2 id="taskOptionsTitle">更多设置</h2><p id="taskOptionsDescription">只调整你关心的项目，其余保持自动。</p></div><button type="button" id="closeTaskOptions" class="task-options-close" aria-label="关闭更多设置" autofocus>×</button></header>
+              <div class="advanced-settings-body" id="taskOptionsBody" tabindex="0" role="region" aria-label="更多设置内容">
                 <div id="newCustomerFields" class="field optional-setting-group"><label for="customerName">客户名称（可选）</label><input id="customerName" name="customerName" placeholder="不填也能开始，之后可以再命名"><label class="inline-check"><input type="checkbox" name="saveIdentitySet" value="true" checked> 保存这次上传的客户照片供以后复用</label></div>
                 <div class="field"><label for="intendedUse">成片用途（可选）</label><select id="intendedUse" name="intendedUse"><option value="custom">普通人物写真（自动）</option><option value="livestream_cover">直播封面</option><option value="social_avatar">社交媒体头像</option><option value="personal_ip_poster">个人 IP 海报</option><option value="course_promotion">课程宣传</option><option value="company_profile">企业宣传</option><option value="event_poster">活动海报</option><option value="professional_portrait">职业形象</option><option value="lifestyle_portrait">生活写真</option></select></div>
                 <section id="apiAdvancedOptions" class="api-advanced-options" hidden>
@@ -105,7 +107,7 @@
                     <div class="field"><label for="apiImageSize">画面比例</label><select id="apiImageSize"><option value="1024x1536">竖版</option><option value="1024x1024">方形</option><option value="1536x1024">横版</option><option value="auto">自动</option></select></div>
                     <div class="field"><label for="apiImageQuality">生成质量</label><select id="apiImageQuality"><option value="auto">自动</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
                   </div>
-                  <details><summary>局部编辑区域（可选）</summary><input id="apiMask" type="file" accept="image/png"><small>需要精确限定修改区域时，再上传与原图同尺寸的透明 PNG。</small></details>
+                  <details><summary>局部编辑区域（可选）</summary><input id="apiMask" class="history-file-input polished-file-input" type="file" accept="image/png" data-upload-preview="apiMaskPreview"><label class="history-image-picker upload-image-picker" for="apiMask"><span class="upload-picker-icon" aria-hidden="true">＋</span><span><strong>选择蒙版图片</strong><small>透明 PNG，与原图尺寸一致</small></span><em data-file-status>尚未选择</em></label><div id="apiMaskPreview" class="upload-selection" aria-live="polite"></div></details>
                   <p id="apiModeStatus" class="notice" aria-live="polite"></p>
                   <button type="button" class="secondary compact-action" id="configureImageApi">配置 API</button>
                 </section>
@@ -118,11 +120,14 @@
                   <div class="field"><label for="businessDomain">客户领域</label><input id="businessDomain" name="businessDomain" placeholder="例如：健康管理、企业服务、个人 IP"></div>
                 </div>
                 <fieldset class="intent-options" id="temperamentOptions"><legend>人物气质（可多选）</legend><label><input type="checkbox" name="temperamentKeywords" value="professional">专业</label><label><input type="checkbox" name="temperamentKeywords" value="trustworthy">可信</label><label><input type="checkbox" name="temperamentKeywords" value="approachable">亲和</label><label><input type="checkbox" name="temperamentKeywords" value="premium">高级</label><label><input type="checkbox" name="temperamentKeywords" value="cool">冷峻</label><label><input type="checkbox" name="temperamentKeywords" value="energetic">活力</label><label><input type="checkbox" name="temperamentKeywords" value="calm">沉稳</label><label><input type="checkbox" name="temperamentKeywords" value="technological">科技感</label><label><input type="checkbox" name="temperamentKeywords" value="editorial">杂志感</label><label><input type="checkbox" name="temperamentKeywords" value="cinematic">电影感</label></fieldset>
+                <details class="visual-analysis-details"><summary>照片分析与推荐</summary><p id="customerVisualStatus" role="status">选择客户图后自动推荐。</p><button type="button" class="quiet-button" id="reanalyzeCustomer">重新分析所选客户图</button><small>重新分析可能计费；不会触发生图。</small></details>
                 <details id="sendPromptPreviewDetails" class="generation-explanation"><summary>查看系统整理的生成说明</summary><section class="compiled-prompt-panel"><div class="recommendations-header"><div><strong>生成说明</strong><small>系统会在开始前重新核对客户图和模板</small></div><button type="button" class="secondary compact-action" id="previewCompiledPrompt">更新说明</button></div><pre id="compiledPromptPreview">选好客户图和模板后，这里会显示系统整理的要求。</pre><div class="notice compact" id="promptCompilationNotice"></div></section></details>
               </div>
-            </details>
+                <footer class="task-options-footer"><p id="taskOptionsScrollHint" aria-live="polite">下方还有设置 · 向下滚动</p><div><small>修改保留在本次任务，关闭不会开始生成</small><button type="button" id="doneTaskOptions" class="primary">完成设置</button></div></footer>
+              </dialog>
+            </section>
             <!-- Template Recommendation Section -->
-            <section class="customer-visual-status" hidden><p id="customerVisualStatus" role="status">选择客户图后自动推荐。</p><button type="button" class="quiet-button" id="reanalyzeCustomer">重新分析所选客户图</button><small>重新分析可能计费；不会触发生图。</small></section>
+            <p class="customer-visual-status" id="customerVisualNotice" role="status" hidden></p>
             <div id="smartTaskConflicts" class="notice" hidden></div>
             <section class="recommendations-section" id="recommendationsSection" aria-label="智能推荐模板" hidden>
               <div class="recommendations-header">
@@ -160,11 +165,6 @@
 
             </div>
             <footer class="task-brief-footer">
-              <section class="send-summary" id="sendSummary" aria-label="本次将发送">
-                <div><strong>本次生成</strong><small>确认后开始</small></div>
-                <small id="generationChannelSummary">ChatGPT 网页版</small>
-                <ul id="sendSummaryList"><li>先在左侧添加客户图和模板。</li></ul>
-              </section>
               <div class="notice compact" id="prepareResult"></div>
               <p id="creationReadiness" class="creation-readiness" aria-live="polite">先添加一张客户照片，即可继续</p>
               <button class="primary task-submit" type="submit" aria-describedby="creationReadiness prepareResult" id="prepareRun">开始生成</button>
@@ -191,18 +191,22 @@
       </section>
 
       <section class="stage-panel results-panel" data-stage-panel="results" hidden>
-        <div class="panel-heading"><div><span class="section-kicker">Result capture</span><h1>保存生成结果</h1><p>优先检测当前对话的真实原图；失败时人工导入，不会重新提交任务。</p></div><button class="secondary compact-action" type="button" data-go-stage="generation">返回生成步骤</button></div>
+        <div class="panel-heading"><div><h1>保存生成结果</h1><p>自动保存已生成的原图，也可按需导入本地图片。</p></div><button class="secondary compact-action" type="button" data-go-stage="generation">返回生成步骤</button></div>
         <div class="result-layout">
-          <section class="card capture-card">
-            <div class="card-heading"><div><span class="section-kicker">Automatic capture</span><h2>自动检测结果</h2></div></div>
-            <p class="subcopy">只读取当前已提交对话中的新图片资源，并校验其任务来源。</p>
-            <button class="primary full-button" type="button" id="captureRun" disabled>检测并保存结果</button>
+          <section class="card capture-card result-method-card">
+            <div class="capture-copy"><h2>自动检测结果</h2><p class="subcopy">保存本次任务原图，不会重新生成。</p></div>
+            <div class="capture-body">
+              <div class="capture-overview" id="captureOverview" role="status" aria-live="polite"><span class="capture-state-icon" id="captureStateIcon" aria-hidden="true">·</span><div><strong id="captureStateTitle">等待任务状态</strong><small id="captureStateDetail">只保存当前任务对应的原图。</small></div></div>
+              <ol class="capture-process" id="captureProcess"><li><span>1</span><div><strong>确认本次任务</strong><small>只读取当前任务对应的结果</small></div></li><li><span>2</span><div><strong>核对图片来源</strong><small>区分生成结果与参考图片</small></div></li><li><span>3</span><div><strong>保存完整原图</strong><small>校验图片并过滤重复结果</small></div></li></ol>
+              <div class="capture-result-grid" id="captureOutputGrid" hidden aria-label="已保存的结果图片"></div>
+            </div>
+            <div class="result-method-actions"><button class="primary" type="button" id="captureRun" disabled>检测并保存结果</button></div>
           </section>
-          <section class="card import-card">
-            <div class="card-heading"><div><span class="section-kicker">Manual fallback</span><h2>人工导入结果</h2></div></div>
-            <form id="artifactImportForm" class="inline-upload">
-              <div class="field grow"><label for="artifactResults">结果图（最多 4 张）</label><input id="artifactResults" name="results" type="file" accept="image/png,image/jpeg,image/webp" multiple required></div>
-              <button class="secondary" type="submit">导入本次任务</button>
+          <section class="card import-card result-method-card">
+            <div class="capture-copy"><h2>人工导入结果</h2><p class="subcopy">导入已下载的图片，不会重新生成。</p></div>
+            <form id="artifactImportForm" class="result-import-form">
+              <div class="field grow"><input id="artifactResults" class="history-file-input polished-file-input" name="results" type="file" accept="image/png,image/jpeg,image/webp" multiple required data-max-files="4" data-upload-preview="artifactResultsPreview"><label class="history-image-picker upload-image-picker" for="artifactResults"><span class="upload-picker-icon" aria-hidden="true">＋</span><span><strong>选择结果图片</strong><small>PNG、JPG 或 WebP · 最多 4 张</small></span><em data-file-status>尚未选择</em></label><div id="artifactResultsPreview" class="upload-selection" aria-live="polite"></div></div>
+              <div id="artifactImportActions" class="import-actions result-method-actions"><button class="primary" type="submit" disabled>导入图片</button></div>
             </form>
           </section>
         </div>

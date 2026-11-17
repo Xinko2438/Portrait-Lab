@@ -46,7 +46,7 @@ test('reference inputs keep submission contracts while hiding native controls', 
   const html = await readFile(htmlUrl, 'utf8');
   assert.match(html, /id="identity"[^>]*name="identity"[^>]*class="reference-file-input"/);
   assert.match(html, /id="templates"[^>]*name="templates"[^>]*class="reference-file-input"/);
-  assert.match(html, /<details[^>]+class="advanced-reference-settings"[^>]*>/);
+  assert.match(html, /<dialog[^>]+class="advanced-reference-settings task-options-dialog"[^>]*>/);
   for (const name of ['identityAngles', 'targetAngle', 'targetFraming', 'businessDomain']) {
     assert.match(html, new RegExp(`name="${name}"`));
   }
@@ -58,13 +58,14 @@ test('task brief keeps only essential fields primary and moves derived choices i
   const [html, app] = await Promise.all([readFile(htmlUrl, 'utf8'), readFile(appUrl, 'utf8')]);
   assert.match(html, /id="existingCustomerFields"/);
   assert.match(html, /id="newCustomerFields"/);
-  assert.match(html, /<details[^>]+id="moreTaskSettings"[^>]*>/);
+  assert.match(html, /<section[^>]+id="moreTaskSettings"[^>]*>/);
   const disclosure = html.slice(html.indexOf('id="moreTaskSettings"'), html.indexOf('class="customer-visual-status"'));
   for (const id of ['targetFraming', 'targetIntentAngle', 'layoutIntent', 'temperamentOptions', 'businessDomain', 'targetAngle']) {
     assert.match(disclosure, new RegExp(`id="${id}"`), `${id} should be under the shared disclosure`);
   }
   const beforeDisclosure = html.slice(html.indexOf('<aside class="task-brief">'), html.indexOf('id="moreTaskSettings"'));
-  assert.match(html, /id="customerSelector"/);
+  const identitySection = html.slice(html.indexOf('<section class="reference-upload-card">'),html.indexOf('class="customer-photo-pool"'));
+  assert.match(identitySection, /id="customerSelector"/);
   assert.match(beforeDisclosure, /id="generationMode"/);
   assert.match(beforeDisclosure, /id="userSupplement"/);
   assert.match(beforeDisclosure, /id="apiImageCount"/);

@@ -34,6 +34,12 @@ test('browser probe reports missing official extension as a user action', () => 
   assert.equal(result.state, 'extension_required');
   assert.equal(result.ready, false);
 });
+
+test('bridge connectivity does not claim full ChatGPT page readiness and unknown probe errors fail closed',()=>{
+ assert.equal(classifyBrowserProbe('').state,'bridge_ready');
+ assert.match(classifyBrowserProbe('').message,/编辑区.*核对/);
+ assert.equal(classifyBrowserProbe('Protocol error: fixture').ready,false);
+});
 test('passive service status never creates a browser probe session', async () => {
   const server = await readFile(new URL('../src/server.mjs', import.meta.url), 'utf8');
   const statusStart = server.indexOf("url.pathname === '/api/status'");

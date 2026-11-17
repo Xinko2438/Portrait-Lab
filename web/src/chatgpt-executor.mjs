@@ -5,7 +5,8 @@ import { assertReferenceReady } from './reference-policy.mjs';
 import { countNetworkRequests, extractCurrentChatPageTab, extractCurrentChatTab, extractProviderAssetIds } from './result-capture.mjs';
 import { isArtifactRevisionRun, normalizeChatGptConversationUrl } from './artifact-revision-store.mjs';
 
-const composerTarget = '#prompt-textarea';
+const composerLabels = ['与 ChatGPT 聊天', 'Message ChatGPT', '询问 ChatGPT', 'Ask ChatGPT', 'Ask anything'];
+const addFilesLabels = ['添加文件等', 'Add files'];
 const angleLabels = {
   frontal: '正脸',
   left_45: '左 45 度',
@@ -36,17 +37,20 @@ function snapshotRef(line = '') {
 }
 
 export function findActiveAddFilesRef(snapshot = '') {
-  const labels = ['添加文件等', 'Add files'];
   const line = String(snapshot).split(/\r?\n/).find((value) => (
     value.includes('[active]')
-    && labels.some((label) => value.includes(label))
+    && !value.includes('[disabled]')
+    && addFilesLabels.some((label) => value.includes(label))
   ));
   return snapshotRef(line);
 }
 
 export function findComputerUploadAction(snapshot = '') {
   const lines = String(snapshot).split(/\r?\n/);
-  const labels = ['从电脑上传', '添加照片和文件', 'Upload from computer', 'Add photos and files', 'Add photos & files'];
+  const labels = ['从电脑上传', '从计算机上传', '添加照片和文件', 'Upload from computer', 'Add photos and files', 'Add photos & files'];
+  const actions=lines.filter(line=>/\b(?:button|menuitem)\s+"/.test(line)&&!line.includes('[disabled]')&&labels.some(label=>line.includes(label))&&snapshotRef(line));
+  if(actions.length>1)return null;
+  if(actions.length===1)return {ref:snapshotRef(actions[0]),active:actions[0].includes('[active]'),click:!actions[0].includes('[active]')};
   const labelIndex = lines.findIndex((line) => labels.some((label) => line.includes(label)));
   if (labelIndex < 0) return null;
   for (let index = labelIndex; index >= Math.max(0, labelIndex - 6); index -= 1) {
@@ -62,25 +66,29 @@ export function findComputerUploadRef(snapshot = '') {
 }
 
 export function findVisibleSendRef(snapshot = '') {
-  const labels = ['发送提示', '发送消息', 'Send prompt', 'Send message'];
-  const line = String(snapshot).split(/\r?\n/).find((value) => (
-    value.includes('button')
-    && value.includes('[ref=')
-    && !value.includes('[disabled]')
-    && labels.some((label) => value.includes(label))
-  ));
-  return snapshotRef(line);
+  const labels = ['发送提示', '发送消息', '发送', 'Send prompt', 'Send message', 'Send'];
+  const lines = String(snapshot).split(/\r?\n/).filter(value=>!value.includes('[disabled]')&&snapshotRef(value)&&labels.includes(value.match(/\bbutton\s+"([^"]+)"/)?.[1]));
+  return lines.length===1?snapshotRef(lines[0]):null;
+}
+
+export function findComposerRef(snapshot = '', {active=false}={}) {
+  const lines=String(snapshot).split(/\r?\n/).filter(line=>!line.includes('[disabled]')&&(!active||line.includes('[active]'))&&snapshotRef(line)&&composerLabels.includes(line.match(/\btextbox\s+"([^"]+)"/)?.[1]));
+  return lines.length===1?snapshotRef(lines[0]):null;
 }
 
 export function findActiveComposerRef(snapshot = '') {
-  const labels = ['与 ChatGPT 聊天', 'Message ChatGPT'];
-  const line = String(snapshot).split(/\r?\n/).find((value) => (
-    value.includes('textbox')
-    && value.includes('[active]')
-    && value.includes('[ref=')
-    && labels.some((label) => value.includes(label))
-  ));
-  return snapshotRef(line);
+  return findComposerRef(snapshot,{active:true});
+}
+
+async function currentComposerTarget(client) {
+  for(let check=0;check<20;check++){
+    const snapshot=await client.callTool('browser_snapshot',{depth:20});
+    const ref=findComposerRef(snapshot.text);
+    const uploadReady=String(snapshot.text).split(/\r?\n/).some(line=>line.includes('button')&&!line.includes('[disabled]')&&addFilesLabels.some(label=>line.includes(label)));
+    if(ref&&uploadReady)return ref;
+    if(check<19)await client.callTool('browser_wait_for',{time:1});
+  }
+  throw new Error('ChatGPT 编辑区尚未就绪或无法唯一识别；请确认页面已加载并登录。尚未上传或发送本次内容。');
 }
 
 function isMissingFileChooserModalError(error) {
@@ -260,7 +268,7 @@ export class ChatGptExecutor {
       for (let attempt = 0; attempt < 2 && !uploadFromComputerAction; attempt += 1) {
         await client.callTool('browser_type', {
           element: 'ChatGPT message composer',
-          target: composerTarget,
+          target: await currentComposerTarget(client),
           text: '',
           submit: false,
         });
@@ -276,14 +284,15 @@ export class ChatGptExecutor {
         }
       }
       if (!uploadFromComputerAction) throw new Error('ChatGPT upload-from-computer option was not found; nothing was uploaded or sent');
-      await client.callTool('browser_press_key', { key: 'Enter' });
+      if(uploadFromComputerAction.click)await client.callTool('browser_click',{element:'ChatGPT upload from computer',target:uploadFromComputerAction.ref});
+      else await client.callTool('browser_press_key', { key: 'Enter' });
       try {
         await client.callTool('browser_file_upload', { paths });
       } catch (error) {
         if (!isMissingFileChooserModalError(error)) throw error;
         await client.callTool('browser_drop', {
           element: 'ChatGPT message composer',
-          target: composerTarget,
+          target: await currentComposerTarget(client),
           paths,
         });
         await waitForFileDropOverlayToClear(client);
@@ -291,7 +300,7 @@ export class ChatGptExecutor {
       session.requestSnapshot=buildSubmissionSnapshot(run,{prompt:promptForRun(run)});
       await client.callTool('browser_type', {
         element: 'ChatGPT message composer',
-        target: composerTarget,
+        target: await currentComposerTarget(client),
         text: session.requestSnapshot.prompt,
         submit: false,
       });
