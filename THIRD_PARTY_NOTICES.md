@@ -10,4 +10,4 @@
 
 ## 文档截图公开素材署名
 
-docs/workbench.jpg 与 docs/results-capture.jpg 界面截图中展示的演示人像来自 Wikimedia Commons WikiPortraits Studio at Sundance 2025 / SXSW 2025 项目（采用 CC BY-SA 4.0 许可发布），仅用于界面布局演示。
+docs/workbench.jpg 与 docs/results-capture.jpg 界面截图中展示的演示人像来自 Pexels 公开授权人像摄影作品（Pexels License，Photo ID: 20304296、26953111、7870734、7752451、9604193），仅用于界面布局演示。
