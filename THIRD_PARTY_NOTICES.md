@@ -10,4 +10,4 @@
 
 ## 文档截图公开素材署名
 
-docs/workbench.jpg 与 docs/results-capture.jpg 界面截图中展示的演示人像来自 Pexels 公开授权人像摄影作品（Pexels License，Photo ID: 20304296、26953111、7870734、7752451、9604193），仅用于界面布局演示。
+docs/workbench.jpg 与 docs/results-capture.jpg 界面截图中展示的演示人像来自 Pexels 公开授权人像摄影作品（Pexels License，Photo ID: 20304296、26953111、20428259、26760705、32197366），仅用于界面布局演示。
