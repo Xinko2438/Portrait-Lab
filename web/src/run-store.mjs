@@ -291,6 +291,8 @@ function legacyArtifacts(manifest) {
 
 function projectManifest(manifest) {
   const artifacts = legacyArtifacts(manifest);
+  const base={...manifest};
+  if((manifest.status==='submitted'&&manifest.submitted_at&&Number(manifest.submission_attempt_count||0)>0)||(artifacts.length&&['artifacts_saved','completed','preference_pending'].includes(manifest.status)))delete base.last_error;
   const artifactReviews = { ...(manifest.artifact_reviews || {}) };
   if (!Object.keys(artifactReviews).length && manifest.latest_review && artifacts.length === 1) {
     artifactReviews[artifacts[0].artifact_id] = { ...manifest.latest_review, legacy: true };
@@ -303,7 +305,7 @@ function projectManifest(manifest) {
     ? evaluateReferencePlan({ referencePlan: manifest.reference_plan, customerContext: manifest.customer_context })
     : storedPreflight;
   return {
-    ...manifest,
+    ...base,
     artifacts,
     invalidated_artifacts: [...(manifest.invalidated_artifacts || [])],
     restored_artifacts: [...(manifest.restored_artifacts || [])],
@@ -391,6 +393,7 @@ function applyEvent(manifest, event) {
       };
       break;
     case 'RunStaged':
+      if(Number(next.submission_attempt_count||0)>0||next.artifacts.length)break;
       next.status = 'staged';
       next.staged_at = event.recorded_at;
       delete next.last_error;
@@ -408,11 +411,13 @@ function applyEvent(manifest, event) {
       };
       break;
     case 'RunStageFailed':
+      if(Number(next.submission_attempt_count||0)>0||next.artifacts.length)break;
       next.status = event.data?.state || 'provider_error';
       next.last_error = { state: next.status, message: event.data?.message || '', recorded_at: event.recorded_at };
       break;
     case 'RunSubmitted':
-      next.status = 'submitted';
+      next.status = next.artifacts.length ? (next.status==='completed'?'completed':'artifacts_saved') : 'submitted';
+      delete next.last_error;
       next.submitted_at = event.recorded_at;
       next.capture_context = event.data?.capture_context || next.capture_context || null;
       next.submission_attempt_count = Math.max(Number(next.submission_attempt_count || 0), Number(event.data?.submission_attempt || 1));
@@ -444,6 +449,7 @@ function applyEvent(manifest, event) {
       if (artifact && !next.artifacts.some((item) => item.sha256 === artifact.sha256)) next.artifacts.push(artifact);
       next.results = resultProjection(next.artifacts);
       next.status = 'artifacts_saved';
+      delete next.last_error;
       next.result_saved_at = event.recorded_at;
       Object.assign(next, updateCandidateSlateProjection(next));
       break;

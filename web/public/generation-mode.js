@@ -34,7 +34,7 @@ export function initGenerationMode({ getRun, buildForm, acceptResult, showMessag
       document.querySelector('#stageRun').disabled=true;
       document.querySelector('#submitRun').disabled=true;
       document.querySelector('#captureRun').disabled=false;
-      document.querySelector('#captureRun').textContent='查看 / 恢复 API 结果';
+      document.querySelector('#captureRun').textContent=run.artifacts?.length?'继续评审':'查看 / 恢复 API 结果';
     }
     const note=document.querySelector('.task-submit-note');
     if(note) note.textContent=apiMode?'点击后开始 API 生图；失败不会自动重试':'点击后通过 ChatGPT 网页版生成；失败不会自动重试';

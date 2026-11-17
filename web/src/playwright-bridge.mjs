@@ -12,11 +12,16 @@ export function classifyProviderFailure(message = '') {
       message: 'ChatGPT 暂时限制请求。任务已保留，系统不会自动重试。',
     };
   }
+  if (/TimeoutError|Timeout \d+ms exceeded|timed?\s*out|无法.*稳定/i.test(safe)) {
+    return {state:'provider_error',retryAutomatically:false,playwrightHealthy:true,
+      message:'ChatGPT 页面或控件暂未就绪。本次任务已保留；稍后可继续，系统不会自动重发。',diagnostic:safe};
+  }
   return {
     state: 'provider_error',
     retryAutomatically: false,
     playwrightHealthy: true,
-    message: safe || 'ChatGPT 返回了未分类错误。',
+    message: safe.replace(/\u001b\[[0-9;]*m/g,'').split(/\r?\n/).filter(line=>line.trim()&&!/^###/.test(line))[0]?.slice(0,180) || 'ChatGPT 返回了未分类错误。',
+    ...(safe ? {diagnostic:safe} : {}),
   };
 }
 

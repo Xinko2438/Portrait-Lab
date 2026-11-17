@@ -205,6 +205,8 @@ const requestedLocation = parseRunLocation(window.location.search);
 let currentRunId = requestedLocation.runId;
 let currentRunOpenedFromHistory = requestedLocation.fromHistory;
 let currentManifest = null;
+let captureBusy = false;
+const captureRefreshState={runId:null,timer:null,deadline:0,inFlight:false};
 let smartTaskWorkflow=null;
 let smartResolved=null;
 let smartRestoredRunId=null;
@@ -302,11 +304,18 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function readableFailure(value){
+  const text=String(value||'').replace(/\u001b\[[0-9;]*m/g,'');
+  if(/TimeoutError|Timeout \d+ms exceeded|browserBackend\.callTool/.test(text))return 'ChatGPT 页面或控件暂未就绪。任务已保留，系统不会自动重发。';
+  if(/did not export verifiable original image bytes/.test(text))return '浏览器暂未提供可验证的原图响应，请稍后检测或手动导入。';
+  return text.split(/\r?\n/).filter(line=>line.trim()&&!/^###/.test(line))[0]?.slice(0,220)||'操作未完成，请稍后重试。';
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   const data = await response.json();
   if (!response.ok) {
-    const error = new Error(data.error?.message || data.error || `请求失败：${response.status}`);
+    const error = new Error(readableFailure(data.error?.message || data.error || `请求失败：${response.status}`));
     error.status = response.status;
     error.code = data.error?.code || null;
     error.runId = data.error?.run_id || null;
@@ -637,11 +646,14 @@ async function loadHistory() {
 function setBusy(button, busy, text) {
   if (!button) return;
   if (busy) {
-    button.dataset.originalText = button.textContent;
+    if(button.dataset.busy!=='true')button.dataset.originalText = button.textContent;
+    button.dataset.busy='true';
     button.textContent = text;
     button.disabled = true;
   } else {
     button.textContent = button.dataset.originalText || button.textContent;
+    delete button.dataset.originalText;
+    delete button.dataset.busy;
     button.disabled = false;
   }
 }
@@ -1434,17 +1446,19 @@ function renderArtifactInspector(manifest) {
   elements.artifactInspector.append(fragment);
 }
 
-function renderCaptureBody(manifest=currentManifest,{busy=false}={}){
+function renderCaptureBody(manifest=currentManifest,{busy=captureBusy}={}){
   const artifacts=manifest?.artifacts||[];
   const state=manifest?.capture?.state||'';
   const submitted=Number(manifest?.submission_attempt_count||0)>0||['submitted','submission_uncertain','capture_pending'].includes(manifest?.status);
-  const warning=['capture_ambiguous','capture_unverified','capture_access_mismatch','capture_reopen_failed'].includes(state)||['provider_error','provider_rate_limited'].includes(manifest?.status);
+  const warning=['capture_ambiguous','capture_unverified','capture_access_mismatch','capture_reopen_failed','capture_tab_unavailable'].includes(state)||['provider_error','provider_rate_limited'].includes(manifest?.status);
   const saved=artifacts.length>0;
+  const responsePending=state==='capture_response_pending';
+  const pagePending=state==='capture_page_not_ready';
   document.getElementById('captureOverview').dataset.state=busy?'busy':saved?'saved':warning?'warning':'waiting';
   document.getElementById('captureOverview').setAttribute('aria-busy',String(busy));
   document.getElementById('captureStateIcon').textContent=busy?'…':saved?'✓':warning?'!':'·';
-  document.getElementById('captureStateTitle').textContent=busy?'正在检测原图':saved?`已保存 ${artifacts.length} 张图片`:warning?'需要检查任务':submitted?'等待生成结果':'等待任务提交';
-  document.getElementById('captureStateDetail').textContent=saved?'点击下方图片查看原图':warning?'可再次检测，或使用右侧手动导入。':submitted?'可检测原图，也可在右侧导入。':'提交后只检测对应对话中的结果。';
+  document.getElementById('captureStateTitle').textContent=busy?'正在检测原图':saved?`已保存 ${artifacts.length} 张图片`:responsePending?'等待原图响应':pagePending?'等待页面就绪':warning?'需要检查任务':submitted?'等待生成结果':'等待任务提交';
+  document.getElementById('captureStateDetail').textContent=saved?'点击下方图片查看原图':responsePending?'图片已显示，正在读取可验证的原图。':pagePending?'页面暂未就绪，稍后继续检测原任务。':state==='capture_tab_unavailable'?'请打开原 ChatGPT 对话后再检测。':warning?'可再次检测，或使用右侧手动导入。':submitted?'可检测原图，也可在右侧导入。':'提交后只检测对应对话中的结果。';
   document.getElementById('captureProcess').hidden=saved;
   const grid=document.getElementById('captureOutputGrid');grid.hidden=!saved;
   grid.innerHTML=artifacts.map((artifact,index)=>`<button class="capture-output" type="button" data-capture-preview="${index}" aria-label="查看候选 ${artifact.ordinal||index+1} 原图"><img src="/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file" alt="候选 ${artifact.ordinal||index+1}"><span>候选 ${artifact.ordinal||index+1}</span><small>${artifact.width} × ${artifact.height}</small></button>`).join('');
@@ -1598,6 +1612,34 @@ function renderPreference(manifest) {
     : allReviewed ? '评分已完成，等待选择' : '尚未记录';
 }
 
+function setPrimaryNotice(message,state='error'){
+  const notice=elements.prepareResult;
+  if(notice.textContent!==message)notice.textContent=message;
+  notice.dataset.state=state;
+}
+
+function renderPrimaryActionPresentation(manifest=currentManifest){
+  if(!currentRunId||!manifest||manifest.image_api)return;
+  const saved=manifest.artifacts?.length||0;
+  const confirmed=manifest.status==='submitted'||saved>0;
+  const uncertain=manifest.status==='submission_uncertain'&&Number(manifest.submission_attempt_count||0)>0;
+  const captureNeedsAttention=!saved&&['capture_ambiguous','capture_unverified','capture_access_mismatch','capture_reopen_failed','capture_tab_unavailable','provider_error'].includes(manifest.capture?.state);
+  const message=saved?`已保存 ${saved} 张图片，可以继续评审。`:captureNeedsAttention?readableFailure(manifest.capture.message||'任务已发送，但结果保存需要检查；不会重新发送。'):confirmed?'已发送一次，正在自动检测并保存结果。':uncertain?'发送结果待确认，系统只检测原任务，不会重复发送。':null;
+  if(message){
+    setPrimaryNotice(message,confirmed&&!captureNeedsAttention?'success':'warning');
+    if(elements.workflowResult.textContent!==message)elements.workflowResult.textContent=message;
+  }
+  const button=document.querySelector('#prepareRun');
+  if(!button)return;
+  if(primaryActionBusy){
+    if(confirmed)button.textContent=saved?'结果已保存':'已发送，正在同步状态';
+    return;
+  }
+  const action=derivePrimaryAction({currentRunId,manifest});
+  button.textContent={continue_same_run:'继续本次任务并发送一次',submit_once_same_run:'发送一次',capture_results:'检测并保存结果',capture_only:'仅检测结果（禁止重发）',review_artifacts:'继续评分与选择',manual_recovery_required:'需要从历史恢复'}[action.kind]||'开始生成';
+  button.disabled=action.kind==='manual_recovery_required';
+}
+
 function renderRun(data) {
   const manifest = data.manifest;
   if (currentRunId && currentRunId !== data.runId) activeReviewViewOverride = '';
@@ -1614,36 +1656,26 @@ function renderRun(data) {
   elements.runStatus.textContent = statusLabels[manifest.status] || manifest.status;
   elements.runStatus.className = `state-badge ${['artifacts_saved', 'completed'].includes(manifest.status) ? 'success' : ['submission_uncertain', 'provider_error', 'provider_rate_limited'].includes(manifest.status) ? 'warning' : 'neutral'}`;
   updateStageAvailability(manifest);
-  const primaryAction = derivePrimaryAction({ currentRunId, manifest });
-  const primaryButton = document.querySelector('#prepareRun');
-  if (primaryButton && !primaryActionBusy) {
-    primaryButton.textContent = {
-      continue_same_run: '继续本次任务并发送一次',
-      submit_once_same_run: '发送一次',
-      capture_results: '检测并保存结果',
-      capture_only: '仅检测结果（禁止重发）',
-      review_artifacts: '继续评分与选择',
-      manual_recovery_required: '需要从历史恢复',
-    }[primaryAction.kind] || '开始生成';
-    primaryButton.disabled = primaryAction.kind === 'manual_recovery_required';
-  }
+  renderPrimaryActionPresentation(manifest);
   const preflightPassed = renderPreflight(manifest.reference_preflight);
   const retryableProvider = ['provider_rate_limited', 'provider_error'].includes(manifest.status) && Number(manifest.submission_attempt_count || 0) === 0;
   elements.stageRun.disabled = !preflightPassed || !(manifest.status === 'prepared' || manifest.status === 'staged' || retryableProvider);
   elements.submitRun.disabled = manifest.status !== 'staged';
-  elements.captureRun.disabled = !['submitted', 'submission_uncertain'].includes(manifest.status);
   const count = manifest.artifacts?.length || 0;
+  elements.captureRun.disabled = captureBusy || (!count && !['submitted', 'submission_uncertain','capture_pending'].includes(manifest.status));
+  if(!captureBusy) elements.captureRun.textContent = count ? '继续评审' : manifest.image_api ? '查看 / 恢复 API 结果' : '检测并保存结果';
   elements.artifactImportForm.querySelector('input[type="file"]').disabled = count >= 4;
   elements.artifactImportForm.querySelector('button[type="submit"]').disabled = count >= 4;
   renderImportAction();
   if (count) elements.resultMessage.textContent = `已保存 ${count} 张独立候选图。每张图都有自己的文件、哈希和评分记录。`;
-  else if (manifest.capture?.message) elements.resultMessage.textContent = manifest.capture.message;
+  else if (manifest.capture?.message) elements.resultMessage.textContent = readableFailure(manifest.capture.message);
   renderReviewReferences(manifest);
   renderArtifacts(manifest);
   renderAestheticComparison(manifest);
   renderPreference(manifest);
   renderReviewWorkspaceStep(manifest);
   generationMode?.sync();
+  syncCaptureRefresh();
 }
 
 async function applyRunData(data) {
@@ -1665,10 +1697,39 @@ async function refreshRun() {
   return applyRunData(await api(`/api/runs/${currentRunId}`));
 }
 
+function syncCaptureRefresh(){
+  const pending=currentRunId&&!captureBusy&&!currentManifest?.image_api&&!currentManifest?.artifacts?.length&&(['submitted','submission_uncertain','capture_pending'].includes(currentManifest?.status)||primaryActionBusy);
+  if(!pending){
+    if(captureRefreshState.timer)clearTimeout(captureRefreshState.timer);
+    captureRefreshState.timer=null;captureRefreshState.runId=null;return;
+  }
+  if(captureRefreshState.runId!==currentRunId){
+    if(captureRefreshState.timer)clearTimeout(captureRefreshState.timer);
+    captureRefreshState.timer=null;captureRefreshState.runId=currentRunId;captureRefreshState.deadline=Date.now()+15*60*1000;
+  }
+  if(captureRefreshState.timer||captureRefreshState.inFlight||Date.now()>captureRefreshState.deadline)return;
+  const runId=currentRunId;
+  captureRefreshState.timer=setTimeout(async()=>{
+    captureRefreshState.timer=null;
+    if(currentRunId!==runId||captureRefreshState.runId!==runId)return;
+    captureRefreshState.inFlight=true;
+    try{
+      // Local status only: never trigger browser capture, upload or submission.
+      const data=await api(`/api/runs/${encodeURIComponent(runId)}`);
+      if(currentRunId===runId&&captureRefreshState.runId===runId&&data.runId===runId&&!captureBusy&&(!primaryActionBusy||Number(data.manifest?.submission_attempt_count||0)>0||data.manifest?.artifacts?.length))await applyRunData(data);
+    }catch{
+      // A transient local disconnect must not replace the durable task state.
+    }finally{
+      captureRefreshState.inFlight=false;syncCaptureRefresh();
+    }
+  },3000);
+}
+
 function returnToNewTask(notice) {
   currentRunId = null;
   activeReviewViewOverride = '';
   currentManifest = null;
+  syncCaptureRefresh();
   renderCaptureBody(null);
   resultWorkbench?.clear();
   smartTaskWorkflow?.clear();smartResolved=null;smartRestoredRunId=null;
@@ -1688,6 +1749,7 @@ function returnToNewTask(notice) {
   updateStageAvailability(null);
   setStage('references');
   elements.prepareResult.textContent = notice || '';
+  elements.prepareResult.dataset.state='neutral';
   const primaryButton = document.querySelector('#prepareRun');
   if (primaryButton) {
     primaryButton.disabled = false;
@@ -2182,6 +2244,17 @@ renderReferencePreviews('identity');
 renderReferencePreviews('templates');
 
 async function stageAndSubmitRunOnce(runId, { probeBrowserFirst = true } = {}) {
+  const reconcile=async()=>{
+    const data=await api(`/api/runs/${encodeURIComponent(runId)}`);
+    const manifest=data.manifest||{};
+    if(manifest.artifacts?.length||Number(manifest.submission_attempt_count||0)>0){
+      if(currentRunId===runId)await applyRunData(data);
+      return {state:manifest.status==='submitted'||manifest.artifacts?.length?'submitted':'submission_uncertain',alreadyAttempted:true,retryAutomatically:false,message:manifest.artifacts?.length?'原任务已保存结果。':manifest.status==='submitted'?'原任务已发送一次，正在检测结果。':'原任务已有发送记录，只检测结果，不会重复发送。'};
+    }
+    return null;
+  };
+  const prior=await reconcile();if(prior)return prior;
+  try{
   if (probeBrowserFirst) {
     const probe = await api('/api/browser/probe', { method: 'POST' });
     renderBrowserStatus(probe);
@@ -2195,13 +2268,18 @@ async function stageAndSubmitRunOnce(runId, { probeBrowserFirst = true } = {}) {
     body: JSON.stringify({ confirmed: true }),
   });
   if (staged.state !== 'awaiting_submission_confirmation') {
+    const existing=await reconcile();if(existing)return existing;
     throw new Error(staged.message || '参考图未能装载到 ChatGPT，系统没有发送。');
   }
-  return api(`/api/runs/${runId}/submit`, {
+  return await api(`/api/runs/${runId}/submit`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ confirmed: true }),
   });
+  }catch(error){
+    const progressed=await reconcile().catch(()=>null);if(progressed)return progressed;
+    throw error;
+  }
 }
 
 async function createAndSubmitArtifactRevision({ runId, artifactId }) {
@@ -2236,19 +2314,8 @@ async function createAndSubmitArtifactRevision({ runId, artifactId }) {
   };
 }
 
-async function monitorAutomaticCapture(runId, { timeoutMs = 15 * 60 * 1000 } = {}) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-    const data = await api(`/api/runs/${runId}`);
-    if (data.manifest?.artifacts?.length) {
-      renderRun(data);
-      setStage('review');
-      return data;
-    }
-    const state = data.manifest?.capture?.state;
-    if (state && !['not_started', 'capture_not_ready'].includes(state)) return data;
-  }
+async function monitorAutomaticCapture(runId) {
+  if(currentRunId===runId)syncCaptureRefresh();
   return null;
 }
 
@@ -2780,6 +2847,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
   const submittedForm = event.currentTarget;
   event.preventDefault();
   if (primaryActionBusy) return;
+  elements.prepareResult.textContent='';delete elements.prepareResult.dataset.state;
   if (document.querySelector('#prepareRun').getAttribute('aria-disabled') === 'true') {
     elements.prepareResult.textContent = '请先添加一张客户照片，或从已有客户中选择照片。';
     elements.identityInput.focus();
@@ -2788,14 +2856,14 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
   if(smartTaskWorkflow&&smartEditingEnabled()){
     primaryActionBusy=true;setBusy(document.querySelector('#prepareRun'),true,'正在核对参考图');
     try{const choice=templateChoiceRevision;if(runHydration)await runHydration;if(customerPoolLoading)await customerPoolLoading;await Promise.all([...pendingTemplateChoices]);if(choice!==templateChoiceRevision)throw new Error('模板选择已更新，请核对后再点击发送。');await smartTaskWorkflow.prepare();if(choice!==templateChoiceRevision)throw new Error('模板选择已更新，请核对后再点击发送。');if(currentRunId){await repairCurrentSmartRun();}}
-    catch(error){elements.prepareResult.textContent=error.message;primaryActionBusy=false;setBusy(document.querySelector('#prepareRun'),false);return;}
+    catch(error){setPrimaryNotice(error.message);primaryActionBusy=false;setBusy(document.querySelector('#prepareRun'),false);return;}
     primaryActionBusy=false;setBusy(document.querySelector('#prepareRun'),false);
   }
   if (generationMode?.usesApi()) {
     primaryActionBusy=true;
     const button=document.querySelector('#prepareRun');setBusy(button,true,'正在处理 API 任务');
     try{if(currentManifest?.artifacts?.length)setStage('review');else await generationMode.submit();}
-    catch(error){elements.prepareResult.textContent=error.message;}
+    catch(error){setPrimaryNotice(error.message);}
     finally{primaryActionBusy=false;setBusy(button,false);generationMode.sync();}
     return;
   }
@@ -2810,6 +2878,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
       return;
     }
     setBusy(button, true, '正在继续本次任务');
+    setPrimaryNotice('正在核对并继续原任务。','busy');syncCaptureRefresh();
     try {
       if (action.kind === 'continue_same_run') {
         const submitted = await stageAndSubmitRunOnce(currentRunId);
@@ -2838,11 +2907,12 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
       else if (['submitted_capture', 'submission_uncertain_capture_only'].includes(recovery)) setStage('results');
       else if (currentRunId) setStage('generation');
     } catch (error) {
-      elements.prepareResult.textContent = `无法继续原任务：${error.message}`;
+      setPrimaryNotice(`无法继续原任务：${readableFailure(error.message)}`);
       await refreshRun().catch(() => null);
     } finally {
       setBusy(button, false);
       primaryActionBusy = false;
+      renderPrimaryActionPresentation();syncCaptureRefresh();
     }
     return;
   }
@@ -2895,7 +2965,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
     return;
   }
   setBusy(button, true, '正在提交生成');
-  elements.prepareResult.textContent = '正在保存任务、上传参考图并向 ChatGPT 发送一次。';
+  setPrimaryNotice('正在保存任务、上传参考图并向 ChatGPT 发送一次。','busy');
   try {
     if (selectedCatalogTemplates.length) {
       await persistCatalogSelectionDecision();
@@ -2914,6 +2984,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
     currentRunId = data.runId;
     currentRunOpenedFromHistory = false;
     history.replaceState(null, '', `?run=${encodeURIComponent(currentRunId)}`);
+    syncCaptureRefresh();
     if (data.referencePreflight.state === 'blocked') {
       elements.prepareResult.textContent = `任务已保存，但预检未通过：${data.referencePreflight.blocking_issues.map((item) => item.message).join('；')}`;
       await refreshRun();
@@ -2923,8 +2994,8 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
     elements.prepareResult.textContent = submitted.state === 'submitted'
       ? '已向 ChatGPT 发送一次。工作站将在后台自动检测并保存结果；若自动捕获失败，可手工检测或导入。'
       : (submitted.message || '任务已经尝试发送，系统不会重复发送。');
-    await refreshRun();
-    setStage(['submitted', 'submission_uncertain'].includes(submitted.state) ? 'results' : 'generation');
+    const refreshed=await refreshRun();
+    setStage(refreshed?.manifest?.artifacts?.length?'review':['submitted', 'submission_uncertain'].includes(submitted.state) ? 'results' : 'generation');
     if (['submitted', 'submission_uncertain'].includes(submitted.state)) monitorAutomaticCapture(currentRunId).catch(() => {});
   } catch (error) {
     if (error.runId) {
@@ -2935,11 +3006,13 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
       await refreshRun().catch(() => null);
       elements.prepareResult.textContent = '已找回先前创建的同一任务。为避免错发，系统没有按修改后的内容新建或重发；请检查后继续本次任务。';
     } else {
-      elements.prepareResult.textContent = `本次提交未完成：${error.message}`;
+      setPrimaryNotice(`本次提交未完成：${readableFailure(error.message)}`);
+      if(currentRunId)await refreshRun().catch(()=>null);
     }
   } finally {
     setBusy(button, false);
     primaryActionBusy = false;
+    renderPrimaryActionPresentation();syncCaptureRefresh();
   }
 });
 
@@ -2986,12 +3059,14 @@ document.getElementById('captureOutputGrid').addEventListener('click',event=>{
   openMediaPreview(items,Number(trigger.dataset.capturePreview),trigger);
 });
 elements.captureRun.addEventListener('click', async () => {
-  if (!currentRunId) return;
+  if (!currentRunId || captureBusy) return;
+  if (currentManifest?.artifacts?.length) { setStage('review'); return; }
   if(currentManifest?.image_api){
     setBusy(elements.captureRun,true,'正在恢复 API 结果');
     try{await generationMode.resume();}catch(error){elements.resultMessage.textContent=error.message;}
     finally{setBusy(elements.captureRun,false);generationMode.sync();}return;
   }
+  captureBusy=true;
   setBusy(elements.captureRun, true, '正在检测');
   renderCaptureBody(currentManifest,{busy:true});
   elements.resultMessage.textContent = '正在核对当前对话中的新图片资源；不会提交新任务。';
@@ -2999,12 +3074,14 @@ elements.captureRun.addEventListener('click', async () => {
     const data = await api(`/api/runs/${currentRunId}/capture`, { method: 'POST' });
     elements.resultMessage.textContent = data.artifacts?.length
       ? `已保存 ${data.artifacts.length} 张独立候选图。`
-      : (data.capture?.message || '没有找到可验证的原图，请使用人工导入。');
+      : (data.capture?.message ? readableFailure(data.capture.message) : '没有找到可验证的原图，请使用人工导入。');
   } catch (error) {
     elements.resultMessage.textContent = `自动保存未完成：${error.message} 请使用人工导入；系统没有重新提交任务。`;
   } finally {
+    captureBusy=false;
     setBusy(elements.captureRun, false);
     const data = await refreshRun().catch(() => null);
+    renderCaptureBody(currentManifest);
     if (data?.manifest?.artifacts?.length) setStage('review');
   }
 });

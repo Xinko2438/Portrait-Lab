@@ -29,6 +29,9 @@ test('current no-id ChatGPT composer and button menu resolve by unique semantic 
  assert.equal(findComputerUploadRef('- button "添加照片和文件 从计算机上传" [ref=e70]'),'e70');
  assert.equal(findVisibleSendRef('- button "发送" [ref=e71]'),'e71');
  assert.equal(findVisibleSendRef('- button "停止发送" [ref=e71]'),null);
+ assert.equal(findComposerRef('- textbox "询问 ChatGPT" [active] [ref=f7e33]'),'f7e33');
+ assert.equal(findComputerUploadRef('- button "添加照片和文件 从计算机上传" [ref=f7e70]'),'f7e70');
+ assert.equal(findVisibleSendRef('- button "发送" [ref=f7e71]'),'f7e71');
 });
 
 test('current ChatGPT add-photos-and-files menu item is accepted as the computer upload action', () => {
@@ -120,8 +123,8 @@ test('staging waits for hydrated composer and resolves it again after current bu
  const result=await executor.stageRun({run,confirmed:true});
  assert.equal(result.state,'awaiting_submission_confirmation');
  assert.deepEqual(client.calls.filter(c=>c.name==='browser_type').map(c=>c.args.target),['e50','e77']);
- assert.equal(client.calls.filter(c=>c.name==='browser_click'&&c.args.target==='e70').length,1);
- assert.equal(client.calls.filter(c=>c.name==='browser_file_upload').length,1);
+ assert.equal(client.calls.filter(c=>c.name==='browser_click').length,0);
+ assert.equal(client.calls.filter(c=>c.name==='browser_drop').length,1);
  assert.equal(client.calls.some(c=>c.name==='browser_wait_for'&&c.args.time===1),true);
  assert.equal(client.calls.some(c=>c.name==='browser_type'&&c.args.submit),false);
  assert.equal((await executor.submitRun({run,confirmed:true})).state,'submitted');
@@ -135,6 +138,94 @@ test('missing or ambiguous current composer stops before any upload or send',asy
  assert.equal(result.state,'provider_error');assert.match(result.message,/尚未就绪/);
  assert.equal(client.calls.some(c=>['browser_type','browser_file_upload','browser_drop'].includes(c.name)),false);
  assert.equal(client.calls.some(c=>c.name==='browser_press_key'&&c.args.key==='Enter'),false);
+});
+
+test('current upload button uses official file drop without an offscreen click or file chooser',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'slow-upload-'));const run=await preparedRun(root);
+ const client=fakeClient({snapshotTexts:['- button "添加文件等内容" [active] [ref=e51]','- button "添加照片和文件 从计算机上传" [ref=e973]']});
+ const result=await new ChatGptExecutor({clientFactory:()=>client}).stageRun({run,confirmed:true});
+ assert.equal(result.state,'awaiting_submission_confirmation');
+ assert.equal(client.calls.some(c=>c.name==='browser_click'),false);
+ assert.equal(client.calls.filter(c=>c.name==='browser_drop').length,1);
+ assert.equal(client.calls.some(c=>c.name==='browser_file_upload'),false);
+ assert.equal(client.calls.some(c=>c.name==='browser_type'&&c.args.submit),false);
+});
+
+test('slow hydration beyond twenty snapshots waits without uploading twice',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'slow-hydration-'));const run=await preparedRun(root);
+ const client=fakeClient({composerSnapshots:[...Array(22).fill('- heading "请稍候"'),'- textbox "询问 ChatGPT" [active] [ref=e50]\n- button "添加文件等内容" [ref=e51]']});
+ const result=await new ChatGptExecutor({clientFactory:()=>client}).stageRun({run,confirmed:true});
+ assert.equal(result.state,'awaiting_submission_confirmation');
+ assert.equal(client.calls.filter(c=>c.name==='browser_file_upload').length,1);
+});
+
+test('a pre-upload failure retries in its task-owned page without creating another tab',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'retry-owned-tab-'));const run=await preparedRun(root);let ready=false;
+ const client=fakeClient();const call=client.callTool.bind(client);
+ client.callTool=async(name,args)=>{
+  if(name==='browser_tabs'&&args.action==='list'){client.calls.push({name,args});return {text:'- 0: (current) [ChatGPT](https://chatgpt.com/)'};}
+  if(name==='browser_snapshot'&&args.depth===20&&!ready){client.calls.push({name,args});return {text:'- heading "请稍候"'};}
+  return call(name,args);
+ };
+ const executor=new ChatGptExecutor({clientFactory:()=>client});
+ assert.equal((await executor.stageRun({run,confirmed:true})).state,'provider_error');ready=true;
+ assert.equal((await executor.stageRun({run,confirmed:true})).state,'awaiting_submission_confirmation');
+ assert.equal(client.calls.filter(c=>c.name==='browser_tabs'&&c.args.action==='new').length,1);
+ assert.equal(client.calls.some(c=>c.name==='browser_tabs'&&c.args.action==='select'),false);
+});
+
+test('overlapping stage requests share one upload and one staged session',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'stage-concurrent-'));const run=await preparedRun(root);const client=fakeClient();
+ let release;const gate=new Promise(r=>release=r);const initialize=client.initialize.bind(client);
+ client.initialize=async()=>{await gate;await initialize();};
+ const executor=new ChatGptExecutor({clientFactory:()=>client});
+ const first=executor.stageRun({run,confirmed:true});const second=executor.stageRun({run,confirmed:true});release();
+ const results=await Promise.all([first,second]);assert.equal(results.every(r=>r.state==='awaiting_submission_confirmation'),true);
+ assert.equal(client.calls.filter(c=>c.name==='browser_tabs'&&c.args.action==='new').length,1);
+ assert.equal(client.calls.filter(c=>c.name==='browser_file_upload').length,1);
+ assert.equal((await executor.submitRun({run,confirmed:true})).state,'submitted');
+ assert.equal((await executor.submitRun({run,confirmed:true})).state,'already_submitted');
+});
+
+test('verified background mode reselects the exact owned retry page without creating another tab',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'stage-background-retry-'));const run=await preparedRun(root);const client=fakeClient();
+ let ready=false,current=true;const call=client.callTool.bind(client);
+ client.callTool=async(name,args)=>{
+  if(name==='browser_tabs'&&args.action==='list'){client.calls.push({name,args});return {text:`- 0: ${current?'(current) ':''}[ChatGPT](https://chatgpt.com/)\n- 1: ${!current?'(current) ':''}[Unrelated](https://example.com/)`};}
+  if(name==='browser_tabs'&&args.action==='select'){assert.equal(args.index,0);current=true;}
+  if(name==='browser_snapshot'&&args.depth===20&&!ready){client.calls.push({name,args});return {text:'- heading "请稍候"'};}
+  return call(name,args);
+ };
+ const executor=new ChatGptExecutor({clientFactory:()=>client,canSelectBackgroundTab:()=>true});
+ assert.equal((await executor.stageRun({run,confirmed:true})).state,'provider_error');ready=true;current=false;
+ assert.equal((await executor.stageRun({run,confirmed:true})).state,'awaiting_submission_confirmation');
+ assert.equal(client.calls.filter(c=>c.name==='browser_tabs'&&c.args.action==='new').length,1);
+ assert.equal(client.calls.filter(c=>c.name==='browser_tabs'&&c.args.action==='select').length,1);
+});
+
+test('first task reuses the owned connected Welcome page instead of leaving another helper tab',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'stage-welcome-handoff-'));const run=await preparedRun(root);const client=fakeClient();
+ const welcome='chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html?client='+encodeURIComponent(JSON.stringify({name:'ai-img-gen-web'}));
+ let navigated=false;const call=client.callTool.bind(client);
+ client.callTool=async(name,args)=>{
+  if(name==='browser_tabs'&&args.action==='list'){client.calls.push({name,args});return {text:`- 0: (current) [Page](${navigated?'https://chatgpt.com/':welcome})`};}
+  if(name==='browser_navigate'){assert.equal(args.url,'https://chatgpt.com/');navigated=true;}
+  return call(name,args);
+ };
+ const result=await new ChatGptExecutor({clientFactory:()=>client}).stageRun({run,confirmed:true});
+ assert.equal(result.state,'awaiting_submission_confirmation');assert.equal(navigated,true);
+ assert.equal(client.calls.some(c=>c.name==='browser_tabs'&&c.args.action==='new'),false);
+});
+
+test('confirmed submission clears obsolete errors and cannot be demoted by a late stage response',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'stage-late-event-'));const run=await preparedRun(root);
+ await recordRunEvent({root,runId:run.runId,type:'RunStageFailed',data:{state:'provider_error',message:'old upload failure'}});
+ await recordRunEvent({root,runId:run.runId,type:'RunSubmitted',data:{submission_attempt:1}});
+ let current=await loadRun({root,runId:run.runId});assert.equal(current.manifest.status,'submitted');assert.equal(current.manifest.last_error,undefined);
+ await recordRunEvent({root,runId:run.runId,type:'RunStageFailed',data:{state:'provider_error',message:'late obsolete failure'}});
+ await recordRunEvent({root,runId:run.runId,type:'RunStaged'});
+ current=await loadRun({root,runId:run.runId});assert.equal(current.manifest.status,'submitted');assert.equal(current.manifest.last_error,undefined);
+ assert.equal(current.manifest.submission_attempt_count,1);
 });
 test('staged references and preparation revision are bound even when prompt is unchanged',async()=>{
  const root=await mkdtemp(join(tmpdir(),'staged-revision-'));const run=await preparedRun(root);run.manifest.preparation_revision_id='prep_old';const client=fakeClient();const executor=new ChatGptExecutor({clientFactory:()=>client});
@@ -399,6 +490,7 @@ test('staging requires explicit upload confirmation and never submits', async ()
   assert.deepEqual(client.calls.map((call) => call.name), [
     'initialize',
     'browser_tabs',
+    'browser_tabs',
     'browser_wait_for',
     'browser_tabs',
     'browser_press_key',
@@ -414,7 +506,7 @@ test('staging requires explicit upload confirmation and never submits', async ()
     'browser_type',
     'browser_take_screenshot',
   ]);
-  const openedTab = client.calls.find((call) => call.name === 'browser_tabs');
+  const openedTab = client.calls.find((call) => call.name === 'browser_tabs'&&call.args.action==='new');
   assert.deepEqual(openedTab.args, { action: 'new', url: 'https://chatgpt.com/' });
   assert.equal(client.calls.some((call) => call.name === 'browser_navigate'), false);
   assert.equal(client.calls.some(isSendButtonClick), false);
@@ -651,7 +743,7 @@ test('submission remains idempotent and records the exact ChatGPT tab for captur
   assert.equal(second.state, 'already_submitted');
   assert.equal(client.calls.filter(isSendButtonClick).length, 0);
   assert.equal(enterKeyCount(client), enterCountAfterStage + 1);
-  assert.equal(client.calls.filter((call) => call.name === 'browser_tabs' && call.args.action === 'list').length, 2);
+  assert.equal(client.calls.filter((call) => call.name === 'browser_tabs' && call.args.action === 'list').length, 3);
   assert.equal(client.calls.filter((call) => call.name === 'browser_network_requests').length, 2);
   const baselineCallIndex = client.calls.findIndex((call) => call.name === 'browser_network_requests');
   const sendCallIndex = client.calls.findIndex((call, index) => (
@@ -1132,7 +1224,7 @@ test('workbench exposes prepare, stage, submit, capture, per-artifact review, an
 test('workbench exposes uncertain submissions as one-shot result-recovery state', async () => {
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /submission_uncertain:\s*['"]发送状态待确认/);
-  assert.match(app, /\['submitted',\s*'submission_uncertain'\]\.includes\(manifest\.status\)/);
+  assert.match(app, /\['submitted',\s*'submission_uncertain',\s*'capture_pending'\]\.includes\(manifest\.status\)/);
   assert.match(app, /系统不会重复发送/);
 });
 

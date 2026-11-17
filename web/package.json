@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-playwright-response-body.mjs",
     "start": "node src/server.mjs",
     "test": "node --test --test-concurrency=4 tests/*.test.mjs",
     "templates:inspect": "node scripts/import-template-catalog.mjs inspect",
@@ -15,7 +16,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@playwright/mcp": "0.0.79",
+    "@playwright/mcp": "0.0.85",
     "fabric": "7.4.0"
   },
   "description": "Local-first AI portrait creation, review and iteration workspace"

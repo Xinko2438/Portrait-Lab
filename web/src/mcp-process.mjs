@@ -3,6 +3,7 @@ import { createConnection } from 'node:net';
 import { mkdir, open, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensurePlaywrightResponseBodyPatch } from '../scripts/patch-playwright-response-body.mjs';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const mcpCliPath = join(moduleDir, '..', 'node_modules', '@playwright', 'mcp', 'cli.js');
@@ -11,7 +12,7 @@ export function buildMcpLaunch({ token, outputDir, workingDirectory, port = 8931
   return {
     command: process.execPath,
     cwd: workingDirectory,
-    args: [mcpCliPath, '--extension', '--port', String(port), '--host', '127.0.0.1', '--shared-browser-context', '--output-dir', outputDir],
+    args: [mcpCliPath, '--extension', '--background', '--no-tab-group', '--port', String(port), '--host', '127.0.0.1', '--shared-browser-context', '--output-dir', outputDir],
     env: {
       ...process.env,
       PLAYWRIGHT_MCP_EXTENSION_TOKEN: token,
@@ -41,13 +42,14 @@ export async function ensureMcpServer({ tokenFile, outputDir, logFile, workingDi
     if (error?.code !== 'ENOENT') throw error;
   }
   if (token.length < 20) return { ready: false, owned: false, state: 'token_required', process: null };
+  await ensurePlaywrightResponseBodyPatch();
   await mkdir(outputDir, { recursive: true });
   await mkdir(dirname(logFile), { recursive: true });
   const log = await open(logFile, 'a');
   const launch = buildMcpLaunch({ token, outputDir, workingDirectory, port });
   const child = spawn(launch.command, launch.args, { cwd: launch.cwd, env: launch.env, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (await isPortOpen(port)) return { ready: true, owned: true, process: child };
+    if (await isPortOpen(port)) return { ready: true, owned: true, background:true, tabGrouping:false, process: child };
     if (child.exitCode !== null) return { ready: false, state: 'service_failed', process: child };
     await new Promise((resolve) => setTimeout(resolve, 250));
   }

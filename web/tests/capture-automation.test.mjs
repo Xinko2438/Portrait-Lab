@@ -3,3 +3,10 @@ import assert from 'node:assert/strict';
 const m=await import('../src/capture-automation.mjs').catch(()=>({}));
 test('automation backs off and saves without submitting',async()=>{const timers=[];let calls=0;const a=m.createCaptureAutomation({capture:async()=>++calls<2?{manifest:{capture:{state:'capture_not_ready'},artifacts:[]}}:{manifest:{capture:{state:'saved'},artifacts:[{}]}},setTimer:(fn,ms)=>{timers.push({fn,ms});return timers.length},clearTimer:()=>{},now:(()=>{let t=0;return()=>new Date(t).toISOString()})()});a.start('run-x');assert.equal(timers[0].ms,15000);await timers.shift().fn();assert.equal(timers[0].ms,30000);await timers.shift().fn();assert.equal(a.status('run-x').state,'saved')});
 test('ambiguous stops and resume selects only submitted runs',async()=>{const timers=[];const a=m.createCaptureAutomation({capture:async()=>({manifest:{capture:{state:'capture_ambiguous'},artifacts:[]}}),listRuns:async()=>[{run_id:'a',status:'submitted'},{run_id:'b',status:'completed'}],setTimer:(fn,ms)=>{timers.push({fn,ms});return 1},clearTimer:()=>{}});await a.resume();assert.equal(a.status('a').state,'waiting');assert.equal(a.status('b'),null);await timers[0].fn();assert.equal(a.status('a').state,'capture_ambiguous')});
+
+test('a missing original response is checked again without resubmitting',async()=>{
+ const timers=[];let calls=0;
+ const a=m.createCaptureAutomation({capture:async()=>({manifest:{capture:{state:++calls===1?'capture_response_pending':'saved'},artifacts:calls===1?[]:[{}]}}),setTimer:(fn,ms)=>{timers.push({fn,ms});return timers.length},clearTimer:()=>{}});
+ a.start('pending');await timers.shift().fn();assert.equal(a.status('pending').state,'waiting');
+ await timers.shift().fn();assert.equal(a.status('pending').state,'saved');assert.equal(calls,2);
+});

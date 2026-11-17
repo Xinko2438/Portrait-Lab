@@ -141,7 +141,7 @@ let browserState = {
   state: 'not_checked',
   message: '尚未主动检查。点击“重新检查”后才连接默认 Chrome。',
 };
-const executor = new ChatGptExecutor({ clientFactory: () => new McpClient() });
+const executor = new ChatGptExecutor({ clientFactory: () => new McpClient(), canSelectBackgroundTab:()=>mcpState.owned===true&&mcpState.background===true });
 const resultCapture = new ChatGptMcpResultCapture({ outputDir: join(runtimeRoot, 'playwright-mcp') });
 const templateSelectionApi = createTemplateSelectionApiHandler({ root: projectRoot });
 const faceTagApi = createFaceTagApiHandler({ root: projectRoot });
@@ -210,6 +210,8 @@ async function ensurePlaywright() {
   } else if (!mcpState.ready) {
     mcpState = { ready: true, owned: false, process: null };
   }
+  // Only our verified background launch can safely reopen/select task pages.
+  resultCapture.allowTabRecovery = mcpState.owned === true && mcpState.background === true;
   return mcpState;
 }
 
@@ -284,7 +286,7 @@ const server = http.createServer(async (req, res) => {
       await ensurePlaywright();
       return json(res, 200, {
         app: 'ready',
-        mcp: { ready: mcpState.ready, owned: mcpState.owned },
+        mcp: { ready: mcpState.ready, owned: mcpState.owned, background:mcpState.background===true, tabGrouping:mcpState.tabGrouping??null },
         ai_prompt_writer: aiPromptWriter ? 'ready' : 'disabled',
         prompt_recipe: promptRecipeEnabled ? 'candidate_enabled' : 'inactive',
         face_angle_matching: 'disabled',
@@ -823,14 +825,15 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && action === 'stage') {
         const body = await readJson(req);
         const run = await loadRun({ root: projectRoot, runId });
+        if(Number(run.manifest.submission_attempt_count||0)>0||run.manifest.artifacts?.length)return json(res,200,{runId,state:run.manifest.status==='submitted'||run.manifest.artifacts?.length?'already_submitted':'already_attempted',retryAutomatically:false});
         if (!isArtifactRevisionRun(run)) assertTemplateSelectionLinked(run);
         if (!isArtifactRevisionRun(run) && !run.manifest.submission_attempt_count) await assertTemplatesNotRejected({root:projectRoot,templateUids:(run.manifest.template_references||[]).map(t=>t.template_uid).filter(Boolean),imageHashes:(run.manifest.template_references||[]).map(t=>t.sha256).filter(Boolean)});
         const state = await ensurePlaywright();
         if (!state.ready) return json(res, 503, { error: 'Playwright 尚未连接默认 Chrome。' });
         const result = await executor.stageRun({ run, confirmed: body.confirmed === true });
-        if (result.state === 'awaiting_submission_confirmation' && run.manifest.status !== 'staged') {
+        if (result.state === 'awaiting_submission_confirmation' && !result.sharedStaging && run.manifest.status !== 'staged') {
           await recordRunEvent({ root: projectRoot, runId, type: 'RunStaged', data: { executor: 'playwright-mcp-extension', recovered: result.alreadyStaged === true } });
-        } else if (result.state !== 'awaiting_submission_confirmation') {
+        } else if (result.state !== 'awaiting_submission_confirmation' && !result.sharedStaging) {
           await recordRunEvent({ root: projectRoot, runId, type: 'RunStageFailed', data: result });
         }
         return json(res, 200, { runId, ...result });
@@ -840,6 +843,7 @@ const server = http.createServer(async (req, res) => {
         const body = await readJson(req);
         if (body.confirmed !== true) throw new Error('Submission confirmation is required');
         const run = await loadRun({ root: projectRoot, runId });
+        if(Number(run.manifest.submission_attempt_count||0)>0||run.manifest.artifacts?.length)return json(res,200,{runId,state:run.manifest.status==='submitted'||run.manifest.artifacts?.length?'already_submitted':'already_attempted',retryAutomatically:false});
         if (!isArtifactRevisionRun(run)) assertTemplateSelectionLinked(run);
         if (!isArtifactRevisionRun(run) && !run.manifest.submission_attempt_count) await assertTemplatesNotRejected({root:projectRoot,templateUids:(run.manifest.template_references||[]).map(t=>t.template_uid).filter(Boolean),imageHashes:(run.manifest.template_references||[]).map(t=>t.sha256).filter(Boolean)});
         if (!executor.hasStagedSession(runId)) return json(res, 409, {

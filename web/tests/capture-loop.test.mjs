@@ -9,6 +9,87 @@ import { createRunSnapshot, listRuns, loadRun, recordRunEvent } from '../src/run
 import { buildCandidateSlateRequest } from '../src/intelligent-workbench/candidate-slate.mjs';
 const captureModule = await import('../src/result-capture.mjs').catch(() => ({}));
 
+test('only this workbench connection pages close after a ChatGPT target is attached',async()=>{
+ assert.equal(typeof captureModule.closeConnectionWelcomeTabs,'function');
+ const base='chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html?client=';
+ const own=base+encodeURIComponent(JSON.stringify({name:'ai-img-gen-web'}));
+ const other=base+encodeURIComponent(JSON.stringify({name:'another-project'}));
+ const target='https://chatgpt.com/c/11111111-2222-3333-4444-555555555555';
+ const calls=[];const client={async callTool(name,args){calls.push({name,args});return {text:'closed'};}};
+ const tabs=captureModule.parseBrowserTabs(`- 0: [Welcome](${own})\n- 1: [Other](${other})\n- 2: (current) [Original](${target})\n- 3: [Status](chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/status.html)\n- 4: [A title with [link](${own})](https://example.com/user-page)`);
+ assert.equal(tabs[0].url,own,'native extension URLs retain their scheme and ownership');
+ assert.equal(await captureModule.closeConnectionWelcomeTabs(client,tabs,target),1);
+ assert.deepEqual(calls,[{name:'browser_tabs',args:{action:'close',index:0}}]);calls.length=0;
+ assert.equal(await captureModule.closeConnectionWelcomeTabs(client,tabs.map(t=>({...t,current:false})),target),0);assert.equal(calls.length,0);
+});
+
+test('missing exported body is pending rather than terminal invalid-image failure',async()=>{
+ const outputDir=await mkdtemp(join(tmpdir(),'capture-body-pending-'));
+ const url='https://chatgpt.com/c/11111111-2222-3333-4444-555555555555';
+ const client={async callTool(name){
+  if(name==='browser_tabs')return {text:`- 0: (current) [Original](${url})`};
+  if(name==='browser_snapshot')return {text:'- button "已生成图像 1" [ref=e10]:\n  - img "已生成图像 1" [ref=e11]'};
+  if(name==='browser_network_requests')return {text:'11. [GET] https://chatgpt.com/backend-api/estuary/content?id=output => [200] OK'};
+  if(name==='browser_network_request')return {text:''};
+  throw Error(`Unexpected ${name}`);
+ }};
+ const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run:{runId:'run-body-pending',manifest:{capture_context:{chat_url:url,network_request_count:10}}}});
+ assert.equal(result.state,'capture_response_pending');assert.equal(result.files.length,0);assert.match(result.message,/原图|响应/);
+});
+
+test('background capture never opens or foregrounds another tab when the original is absent',async()=>{
+ const outputDir=await mkdtemp(join(tmpdir(),'capture-quiet-'));const calls=[];
+ const client={async callTool(name,args){calls.push({name,args});if(name==='browser_tabs'&&args.action==='list')return {text:'- 0: (current) [Unrelated](https://example.com/)'};throw Error(`Must not operate ${name}`);}};
+ const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run:{runId:'run-quiet',manifest:{capture_context:{chat_url:'https://chatgpt.com/c/11111111-2222-3333-4444-555555555555'}}}});
+ assert.equal(result.state,'capture_tab_unavailable');assert.equal(calls.length,1);
+});
+
+test('next check refreshes the exact original tab once and recovers fresh response bytes',async()=>{
+ const outputDir=await mkdtemp(join(tmpdir(),'capture-evicted-response-'));const calls=[];let refreshed=false;
+ const url='https://chatgpt.com/c/11111111-2222-3333-4444-555555555555';
+ const client={async callTool(name,args){calls.push({name,args});
+  if(name==='browser_tabs')return {text:`- 0: (current) [Original](${url})`};
+  if(name==='browser_navigate'){assert.equal(args.url,url);refreshed=true;return {text:'ready'};}
+  if(name==='browser_wait_for')return {text:'ready'};
+  if(name==='browser_snapshot')return {text:'- button "已生成图像 1" [ref=e10]:\n  - img "已生成图像 1" [ref=e11]'};
+  if(name==='browser_network_requests')return {text:'11. [GET] https://chatgpt.com/backend-api/estuary/content?id=output => [200] OK'};
+  if(name==='browser_network_request'){if(refreshed)await writeFile(args.filename,sizedPng(640,800,100000,7));return {text:''};}
+  throw Error(`Unexpected ${name}`);
+ }};
+ const run={runId:'run-evicted',manifest:{capture_context:{chat_url:url,network_request_count:10,response_refresh_needed:true}}};
+ const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run});
+ assert.equal(result.state,'ready');assert.equal(result.files.length,1);
+ assert.equal(calls.filter(c=>c.name==='browser_navigate').length,1);
+ assert.equal(calls.some(c=>c.name==='browser_tabs'&&c.args.action!=='list'),false);
+ assert.equal(calls.some(c=>['browser_type','browser_file_upload','browser_press_key'].includes(c.name)),false);
+});
+
+test('manual and automatic capture share one in-flight import',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'capture-serialized-'));const run=await submittedRun(root);let release,calls=0;
+ const gate=new Promise(r=>release=r);const adapter={async capture(){calls++;await gate;return {state:'ready',files:[{name:'a.png',bytes:transparentPng}]};}};
+ const a=captureModule.captureRunArtifacts({root,runId:run.runId,adapter,client:{}});
+ const b=captureModule.captureRunArtifacts({root,runId:run.runId,adapter,client:{}});release();
+ await Promise.all([a,b]);assert.equal(calls,1);
+ const saved=await loadRun({root,runId:run.runId});assert.equal(saved.manifest.artifacts.length,1);assert.equal(saved.events.filter(e=>e.type==='RunSubmitted').length,1);
+});
+
+test('checking an already saved Run returns its originals without another browser action',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'capture-already-saved-'));const run=await submittedRun(root);let calls=0;
+ const adapter={async capture(){calls++;return {state:'ready',files:[{name:'a.png',bytes:transparentPng}]};}};
+ const first=await captureModule.captureRunArtifacts({root,runId:run.runId,adapter,client:{}});
+ const second=await captureModule.captureRunArtifacts({root,runId:run.runId,adapter,client:{}});
+ assert.equal(calls,1);assert.equal(second.manifest.artifacts[0].sha256,first.manifest.artifacts[0].sha256);
+ assert.equal(second.events.filter(e=>e.type==='RunSubmitted').length,1);
+});
+
+test('a transient browser-control timeout remains recoverable and keeps one submission',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'capture-control-wait-'));const run=await submittedRun(root);
+ const checked=await captureModule.captureRunArtifacts({root,runId:run.runId,client:{},adapter:{async capture(){throw Error('TimeoutError: browserBackend.callTool: Timeout 15000ms exceeded.\nCall log: hidden control');}}});
+ assert.equal(checked.manifest.capture.state,'capture_page_not_ready');assert.ok(checked.manifest.capture.message.length<180);
+ assert.match(checked.manifest.capture.diagnostic,/hidden control/);
+ assert.equal(checked.events.filter(e=>e.type==='RunSubmitted').length,1);assert.equal(checked.manifest.artifacts.length,0);
+});
+
 test('current generated-image labels and carousel remain distinct from attachments or edit actions',()=>{
  assert.deepEqual(captureModule.generatedImageButtonRefs('- button "已生成图像 1" [ref=e10]:\n  - img "已生成图像 1" [ref=e11]\n- button "用户附件" [ref=e12]:\n  - img "用户附件" [ref=e13]'),['e10']);
  assert.deepEqual(captureModule.generatedImageCarouselRefs('- group "生成的图像":\n  - button "显示生成的图像 1" [pressed] [ref=e20]\n  - button "显示生成的图像 2" [ref=e21]\n- button "编辑生成的图像 1" [ref=e22]'),['e20','e21']);
@@ -27,6 +108,21 @@ test('current two-image carousel loads the other candidate and captures both ori
  }};
  const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run:{runId:'run-current',manifest:{capture_context:{chat_url:'https://chatgpt.com/c/11111111-2222-3333-4444-555555555555',browser_tab_index:0,network_request_count:10}}}});
  assert.equal(result.state,'ready');assert.equal(result.files.length,2);assert.equal(calls.filter(c=>c.name==='browser_click').length,1);assert.equal(calls.some(c=>['browser_type','browser_press_key','browser_file_upload'].includes(c.name)),false);
+});
+
+test('available originals are saved before touching offscreen carousel controls',async()=>{
+ const outputDir=await mkdtemp(join(tmpdir(),'capture-no-geometry-'));let clicks=0;
+ const url='https://chatgpt.com/c/11111111-2222-3333-4444-555555555555';
+ const client={async callTool(name,args){
+  if(name==='browser_tabs')return {text:`- 0: (current) [Original](${url})`};
+  if(name==='browser_snapshot')return {text:'- button "已生成图像 1":\n  - img "已生成图像 1" [box=0,1000,0,0]\n- group "生成的图像":\n  - button "显示生成的图像 1" [pressed] [ref=f1e20]\n  - button "显示生成的图像 2" [ref=f1e21]'};
+  if(name==='browser_network_requests')return {text:'11. [GET] https://chatgpt.com/backend-api/estuary/content?id=a => [200] OK\n12. [GET] https://chatgpt.com/backend-api/estuary/content?id=b => [200] OK'};
+  if(name==='browser_network_request'){await writeFile(args.filename,sizedPng(640,800,100000,args.index));return {text:'saved'};}
+  if(name==='browser_click'){clicks++;throw Error('TimeoutError: offscreen control');}
+  throw Error(`Unexpected ${name}`);
+ }};
+ const result=await new captureModule.ChatGptMcpResultCapture({outputDir}).capture({client,run:{runId:'run-no-geometry',manifest:{capture_context:{chat_url:url,network_request_count:10}}}});
+ assert.equal(result.state,'ready');assert.equal(result.files.length,2);assert.equal(clicks,0);
 });
 
 const transparentPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
@@ -223,7 +319,7 @@ test('Playwright MCP capture adapter accepts only new requests from the recorded
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const result = await adapter.capture({
     client,
     run: { runId: 'run-test', manifest: { capture_context: { chat_url: 'https://chatgpt.com/c/11111111-2222-3333-4444-555555555555', browser_tab_index: 1, network_request_count: 10 } } },
@@ -382,7 +478,7 @@ test('capture reopens the exact stored conversation when the submitted tab was c
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const result = await adapter.capture({
     client,
     run: { runId: 'run-reopen', manifest: { capture_context: { chat_url: expectedUrl, browser_tab_index: 9, network_request_count: 452 } } },
@@ -411,10 +507,10 @@ test('capture replaces a stale submission baseline after MCP restart', async () 
       calls.push({ name, args });
       if (name === 'browser_tabs' && args.action === 'list') {
         return { text: reopened
-          ? `- 0: [Old](${expectedUrl})\n- 1: (current) [Recovered](${expectedUrl})`
+          ? `- 0: (current) [Recovered](${expectedUrl})`
           : `- 0: (current) [Old](${expectedUrl})` };
       }
-      if (name === 'browser_tabs' && args.action === 'new') { reopened = true; return { text: 'opened' }; }
+      if (name === 'browser_navigate') { assert.equal(args.url,expectedUrl);reopened = true; return { text: 'opened' }; }
       if (name === 'browser_wait_for') return { text: 'waited' };
       if (name === 'browser_snapshot') return { text: '- button [ref=e920]\n  - img "Generated image" [ref=e921]' };
       if (name === 'browser_network_requests') {
@@ -438,7 +534,8 @@ test('capture replaces a stale submission baseline after MCP restart', async () 
   assert.equal(result.state, 'ready');
   assert.equal(result.captureContext.network_request_count, 0);
   assert.equal(result.captureContext.recovery_mode, 'reopened_conversation');
-  assert.equal(calls.filter((call) => call.name === 'browser_tabs' && call.args.action === 'new').length, 1);
+  assert.equal(calls.filter((call) => call.name === 'browser_tabs' && call.args.action === 'new').length, 0);
+  assert.equal(calls.filter((call) => call.name === 'browser_navigate').length, 1);
 });
 
 test('capture opens at most one recovery tab and reports an inaccessible conversation without submitting', async () => {
@@ -455,7 +552,7 @@ test('capture opens at most one recovery tab and reports an inaccessible convers
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const result = await adapter.capture({
     client,
     run: { runId: 'run-inaccessible', manifest: { capture_context: { chat_url: expectedUrl, network_request_count: 10 } } },
@@ -484,7 +581,7 @@ test('reopened conversation that is still loading returns refreshed context for 
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const result = await adapter.capture({
     client,
     run: { runId: 'run-reopen-not-ready', manifest: { capture_context: { chat_url: expectedUrl, browser_tab_index: 9, network_request_count: 400 } } },
@@ -521,7 +618,7 @@ test('reopened URL that resolves to an inaccessible ChatGPT workspace is not mis
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const result = await adapter.capture({
     client,
     run: { runId: 'run-workspace-mismatch', manifest: { capture_context: { chat_url: expectedUrl, network_request_count: 400 } } },
@@ -746,7 +843,7 @@ test('Playwright MCP capture adapter recovers from a different chat, rejects inv
       throw new Error(`Unexpected tool ${name}`);
     },
   };
-  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir });
+  const adapter = new captureModule.ChatGptMcpResultCapture({ outputDir, allowTabRecovery:true });
   const mismatch = await adapter.capture({
     client: mismatchClient,
     run: { runId: 'run-test', manifest: { capture_context: { chat_url: expectedUrl, network_request_count: 0 } } },

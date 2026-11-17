@@ -2,7 +2,7 @@ import { assertTemplateSelectionLinked } from './catalog-run-integration.mjs';
 import { buildSubmissionSnapshot } from './generation-details.mjs';
 import { classifyProviderFailure } from './playwright-bridge.mjs';
 import { assertReferenceReady } from './reference-policy.mjs';
-import { countNetworkRequests, extractCurrentChatPageTab, extractCurrentChatTab, extractProviderAssetIds } from './result-capture.mjs';
+import { countNetworkRequests, extractCurrentChatPageTab, extractCurrentChatTab, extractProviderAssetIds, parseBrowserTabs, closeConnectionWelcomeTabs, isWorkbenchConnectionTab } from './result-capture.mjs';
 import { isArtifactRevisionRun, normalizeChatGptConversationUrl } from './artifact-revision-store.mjs';
 
 const composerLabels = ['与 ChatGPT 聊天', 'Message ChatGPT', '询问 ChatGPT', 'Ask ChatGPT', 'Ask anything'];
@@ -33,7 +33,7 @@ function labelFraming(value) {
 }
 
 function snapshotRef(line = '') {
-  return String(line).match(/\[ref=(e\d+)\]/)?.[1] || null;
+  return String(line).match(/\[ref=((?:f\d+)?e\d+)\]/)?.[1] || null;
 }
 
 export function findActiveAddFilesRef(snapshot = '') {
@@ -81,12 +81,12 @@ export function findActiveComposerRef(snapshot = '') {
 }
 
 async function currentComposerTarget(client) {
-  for(let check=0;check<20;check++){
+  for(let check=0;check<60;check++){
     const snapshot=await client.callTool('browser_snapshot',{depth:20});
     const ref=findComposerRef(snapshot.text);
     const uploadReady=String(snapshot.text).split(/\r?\n/).some(line=>line.includes('button')&&!line.includes('[disabled]')&&addFilesLabels.some(label=>line.includes(label)));
     if(ref&&uploadReady)return ref;
-    if(check<19)await client.callTool('browser_wait_for',{time:1});
+    if(check<59)await client.callTool('browser_wait_for',{time:1});
   }
   throw new Error('ChatGPT 编辑区尚未就绪或无法唯一识别；请确认页面已加载并登录。尚未上传或发送本次内容。');
 }
@@ -226,13 +226,31 @@ function uploadPathsForRun(run) {
 }
 
 export class ChatGptExecutor {
-  constructor({ clientFactory }) {
+  constructor({ clientFactory, canSelectBackgroundTab=()=>false }) {
     this.clientFactory = clientFactory;
     this.sessions = new Map();
     this.activeRunId = null;
+    this.taskTabs = new Map();
+    this.stageJobs = new Map();
+    this.canSelectBackgroundTab=canSelectBackgroundTab;
   }
 
-  async stageRun({ run, confirmed }) {
+  async stageRun(options){
+    const {run,confirmed}=options;
+    if(confirmed!==true)throw new Error('Upload confirmation is required');
+    assertRunReadyForStaging(run);
+    const signature=JSON.stringify(buildSubmissionSnapshot(run,{prompt:promptForRun(run)}));
+    const pending=this.stageJobs.get(run.runId);
+    if(pending){
+      if(pending.signature!==signature)throw new Error('原任务正在装载，请等待完成后再更新参考图或要求。');
+      return pending.promise.then(result=>({...result,sharedStaging:true}));
+    }
+    const job={signature};
+    job.promise=this.stageRunOnce(options).finally(()=>{if(this.stageJobs.get(run.runId)===job)this.stageJobs.delete(run.runId);});
+    this.stageJobs.set(run.runId,job);return job.promise;
+  }
+
+  async stageRunOnce({ run, confirmed }) {
     if (confirmed !== true) throw new Error('Upload confirmation is required');
     assertRunReadyForStaging(run);
     if (this.activeRunId && this.activeRunId !== run.runId) {
@@ -249,9 +267,33 @@ export class ChatGptExecutor {
     try {
       await client.initialize();
       const stagingTarget = stagingTargetForRun(run);
-      await client.callTool('browser_tabs', { action: 'new', url: stagingTarget });
+      const initialTabs=parseBrowserTabs((await client.callTool('browser_tabs',{action:'list'})).text);
+      const owned=this.taskTabs.get(run.runId);
+      let reused=false;
+      if(owned){
+        const tab=initialTabs.find(t=>t.index===owned.index);
+        if(tab){
+          if(tab.url!==owned.url)throw new Error('原任务页面已变化，请核对后继续；系统没有重新发送。');
+          if(!tab.current){
+            if(this.canSelectBackgroundTab()!==true)throw new Error('原任务页面不在当前连接中；系统没有强制切页或重新发送。');
+            await client.callTool('browser_tabs',{action:'select',index:tab.index});
+            const checked=await client.callTool('browser_tabs',{action:'list'});
+            if(!parseBrowserTabs(checked.text).some(t=>t.current&&t.index===tab.index&&t.url===owned.url))throw new Error('原任务页面连接未能核对，尚未上传或发送。');
+          }
+          await client.callTool('browser_navigate',{url:stagingTarget});
+          reused=true;
+        }
+      }
+      if(!reused){
+        if(initialTabs.some(tab=>tab.current&&isWorkbenchConnectionTab(tab)))await client.callTool('browser_navigate',{url:stagingTarget});
+        else await client.callTool('browser_tabs', { action: 'new', url: stagingTarget });
+      }
       await client.callTool('browser_wait_for', { time: 2 });
-      const stagedTabs = await client.callTool('browser_tabs', { action: 'list' });
+      let stagedTabs = await client.callTool('browser_tabs', { action: 'list' });
+      const attached=extractCurrentChatPageTab(stagedTabs.text);
+      if(attached&&await closeConnectionWelcomeTabs(client,parseBrowserTabs(stagedTabs.text),attached.url))stagedTabs=await client.callTool('browser_tabs',{action:'list'});
+      const ownedTab=extractCurrentChatPageTab(stagedTabs.text);
+      if(ownedTab)this.taskTabs.set(run.runId,ownedTab);
       if (isArtifactRevisionRun(run)) {
         const currentConversation = extractCurrentChatTab(stagedTabs.text);
         if (!currentConversation || currentConversation.url !== stagingTarget) {
@@ -284,18 +326,25 @@ export class ChatGptExecutor {
         }
       }
       if (!uploadFromComputerAction) throw new Error('ChatGPT upload-from-computer option was not found; nothing was uploaded or sent');
-      if(uploadFromComputerAction.click)await client.callTool('browser_click',{element:'ChatGPT upload from computer',target:uploadFromComputerAction.ref});
-      else await client.callTool('browser_press_key', { key: 'Enter' });
-      try {
-        await client.callTool('browser_file_upload', { paths });
-      } catch (error) {
-        if (!isMissingFileChooserModalError(error)) throw error;
+      if(uploadFromComputerAction.click){
+        // The current virtualized menu can expose refs with no actionable box.
+        // Use the existing official file-drop capability, never a forced click.
+        await client.callTool('browser_press_key',{key:'Escape'});
         await client.callTool('browser_drop', {
           element: 'ChatGPT message composer',
           target: await currentComposerTarget(client),
           paths,
         });
         await waitForFileDropOverlayToClear(client);
+      } else {
+        await client.callTool('browser_press_key', { key: 'Enter' });
+        try {
+          await client.callTool('browser_file_upload', { paths });
+        } catch (error) {
+          if (!isMissingFileChooserModalError(error)) throw error;
+          await client.callTool('browser_drop', {element:'ChatGPT message composer',target:await currentComposerTarget(client),paths});
+          await waitForFileDropOverlayToClear(client);
+        }
       }
       session.requestSnapshot=buildSubmissionSnapshot(run,{prompt:promptForRun(run)});
       await client.callTool('browser_type', {

@@ -93,6 +93,9 @@ test('buildMcpLaunch starts the pinned local MCP package without npx.cmd', () =>
   assert.equal(launch.env.PLAYWRIGHT_MCP_PING_TIMEOUT_MS, '0');
   assert.equal(launch.env.PLAYWRIGHT_MCP_TIMEOUT_ACTION, '15000');
   assert.equal(launch.args.includes('--extension'), true);
+  assert.equal(launch.args.includes('--background'), true);
+  assert.equal(launch.args.includes('--no-tab-group'), true);
+  assert.equal(launch.args.includes('--headless'), false);
 });
 
 test('Windows launcher starts the web workbench instead of Python UI', async () => {
@@ -110,6 +113,15 @@ test('desktop grid can shrink without horizontal overflow', async () => {
 });
 
 import { classifyProviderFailure } from '../src/playwright-bridge.mjs';
+
+test('Playwright timeout stays concise while preserving diagnostic evidence',()=>{
+ const raw='### Error\nTimeoutError: browserBackend.callTool: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m - waiting for locator(aria-ref=e973) <button class="'+ 'x'.repeat(4000)+'">';
+ const result=classifyProviderFailure(raw);
+ assert.ok(result.message.length<180);
+ assert.doesNotMatch(result.message,/locator|class=|\u001b/);
+ assert.equal(result.diagnostic,raw);
+ assert.equal(result.retryAutomatically,false);
+});
 test('provider rate limit is not classified as a Playwright connection failure', () => {
   const result = classifyProviderFailure('请求过于频繁，请稍等几分钟后再试。');
   assert.equal(result.state, 'provider_rate_limited');
