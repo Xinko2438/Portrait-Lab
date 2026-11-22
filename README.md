@@ -9,11 +9,11 @@
 ![Fabric.js](https://img.shields.io/badge/Fabric.js-7.4-34465B?style=flat-square)
 ![Windows](https://img.shields.io/badge/Platform-Windows-527EB2?style=flat-square)
 
-**实际案例：两张已保存候选图并排对照**
+**旅行杂志写真 · 同一任务的两张候选**
 
-![实际案例中的两张候选图并排对照](docs/results-capture.jpg)
+![Portrait Lab 结果页中的两张旅行杂志风格候选图](docs/results-capture.jpg)
 
-截图由案例提供者授权公开；两张均为同一任务的候选图，不代表参考图与成片的前后对比。
+展示同一次写真任务生成的候选 1 和候选 2。结果区截图经案例提供者授权公开。
 
 ## 产品流程
 
