@@ -200,7 +200,10 @@
               <ol class="capture-process" id="captureProcess"><li><span>1</span><div><strong>确认本次任务</strong><small>只读取当前任务对应的结果</small></div></li><li><span>2</span><div><strong>核对图片来源</strong><small>区分生成结果与参考图片</small></div></li><li><span>3</span><div><strong>保存完整原图</strong><small>校验图片并过滤重复结果</small></div></li></ol>
               <div class="capture-result-grid" id="captureOutputGrid" hidden aria-label="已保存的结果图片"></div>
             </div>
-            <div class="result-method-actions"><button class="primary" type="button" id="captureRun" disabled>检测并保存结果</button></div>
+            <div class="result-method-actions result-primary-actions">
+              <button class="secondary" type="button" id="discardRun" aria-haspopup="dialog" hidden>弃用结果</button>
+              <button class="primary" type="button" id="captureRun" disabled>检测并保存结果</button>
+            </div>
           </section>
           <section class="card import-card result-method-card">
             <div class="capture-copy"><h2>人工导入结果</h2><p class="subcopy">导入已下载的图片，不会重新生成。</p></div>
@@ -311,6 +314,17 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
+  </dialog>
+
+  <dialog class="discard-run-dialog" id="discardRunDialog" aria-labelledby="discardRunTitle" aria-describedby="discardRunDescription">
+    <form method="dialog">
+      <h2 id="discardRunTitle">弃用本次结果？</h2>
+      <p id="discardRunDescription">本次任务及所有生成图片将永久删除，无法恢复。</p>
+      <footer>
+        <button class="secondary" value="cancel" autofocus>取消</button>
+        <button class="primary discard-run-confirm" value="discard">永久删除</button>
+      </footer>
+    </form>
   </dialog>
 
   <dialog class="history-dialog" id="historyDialog" aria-labelledby="historyDialogTitle">

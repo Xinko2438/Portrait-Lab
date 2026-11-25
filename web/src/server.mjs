@@ -18,6 +18,7 @@ import {
   createHistoricalRun,
   createRunSnapshot,
   importArtifacts,
+  discardSavedRun,
   listRuns,
   loadArtifactAnnotation,
   loadRun,
@@ -820,6 +821,19 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'GET' && !action) {
         return json(res, 200, await publicRun(await loadRun({ root: projectRoot, runId })));
+      }
+
+      if (req.method === 'DELETE' && !action) {
+        if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {
+          return json(res, 403, { error: '仅允许工作台同源删除。' });
+        }
+        const contentType = String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
+        if (contentType !== 'application/json') return json(res, 415, { error: '需要 JSON 请求。' });
+        const body = await readJson(req);
+        const result = await discardSavedRun({ root: projectRoot, runId, confirmed: body?.confirmed });
+        captureAutomation.stop(runId);
+        executor.releaseRun(runId);
+        return json(res, 200, result);
       }
 
       if (req.method === 'POST' && action === 'stage') {

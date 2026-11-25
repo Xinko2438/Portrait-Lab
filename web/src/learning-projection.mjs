@@ -53,7 +53,7 @@ async function listManifests(root) {
   }
   const manifests = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || entry.name.startsWith('.discard-')) continue;
     try {
       const manifest = JSON.parse((await readFile(join(runsRoot, entry.name, 'manifest.json'), 'utf8')).replace(/^\uFEFF/, ''));
       manifests.push(manifest);

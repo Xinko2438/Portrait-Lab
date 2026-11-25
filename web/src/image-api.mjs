@@ -179,6 +179,7 @@ export function createImageApiService({ root, fetchImpl = fetch } = {}) {
   async function status(key) {
     let job;
     try { job = await readJson(jobPath(root, key)); } catch (error) { if (error.code === 'ENOENT') throw fail('未找到该 API 任务', 404); throw error; }
+    if (job.state === 'discarded') throw fail('这个 API 任务已删除', 404);
     let run = null;
     if (job.runId) run = await loadRun({ root, runId: job.runId });
     return { jobKey: key, runId: job.runId || null, state: job.state, message: job.message || '', artifacts: (run?.manifest.artifacts || []).map(a => ({ artifact_id: a.artifact_id, width: a.width, height: a.height, sha256: a.sha256 })), reviewUrl: job.runId ? `/?run=${job.runId}&from=history` : null };
@@ -248,6 +249,7 @@ export function createImageApiService({ root, fetchImpl = fetch } = {}) {
   }
   async function recover(key) {
     const path = jobPath(root, key), job = await readJson(path);
+    if (job.state === 'discarded') throw fail('这个 API 任务已删除', 404);
     if (!job.runId) throw fail('该任务尚未建立 Run，无法恢复结果', 409);
     const run = await loadRun({ root, runId: job.runId });
     const dir = join(run.runDir, 'api-response');

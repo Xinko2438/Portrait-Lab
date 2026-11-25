@@ -86,6 +86,23 @@ test('server exposes history list and one-action import routes without filesyste
   assert.match(historyRoute, /template_count/);
 });
 
+test('confirmed discard physically removes only the selected saved Run', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ai-img-gen-result-discard-'));
+  const { rm } = await import('node:fs/promises');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const discarded = await runStore.createHistoricalRun({ root, ...historicalInput });
+  const retained = await runStore.createHistoricalRun({ root, ...historicalInput });
+  const settings = { root, runId: discarded.runId };
+  await assert.rejects(() => runStore.discardSavedRun(settings), { status: 409 });
+  assert.equal((await runStore.listRuns({ root })).length, 2);
+  const discardedFile = discarded.manifest.artifacts[0].path;
+  await Promise.all([true, true].map(confirmed => runStore.discardSavedRun({ ...settings, confirmed })));
+  await assert.rejects(readFile(discardedFile), { code: 'ENOENT' });
+  await assert.rejects(runStore.loadRun(settings), { code: 'ENOENT' });
+  assert.deepEqual((await runStore.listRuns({ root })).map(run => run.run_id), [retained.runId]);
+  assert.deepEqual(await readFile(retained.manifest.artifacts[0].path), transparentPng);
+});
+
 test('workbench keeps reference preview and history import inside the current page', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../public/index.html', import.meta.url), 'utf8'),

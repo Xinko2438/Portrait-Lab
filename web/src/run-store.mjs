@@ -4,8 +4,8 @@ import {
   resolveCatalogSelectionForRun,
 } from './catalog-run-integration.mjs';
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { appendFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, extname, join, relative } from 'node:path';
 import { inspectImage } from './image-metadata.mjs';
 import { buildSubmissionSnapshot } from './generation-details.mjs';
 import { assertTemplatesNotRejected } from './face-tag-store.mjs';
@@ -16,7 +16,7 @@ import { loadReviewGuidance, rebuildReviewGuidance } from './learning-projection
 import { readAnnotationSession, writeAnnotationSession } from './annotation-store.mjs';
 import { buildCandidateSlateRequest, buildCandidateSlateRequestedEvent, GENERATION_REGIME_VERSION, projectCandidateSlate } from './intelligent-workbench/candidate-slate.mjs';
 import { normalizeArtifactStyleSuggestion } from './template-style-facets-v2.mjs';
-import { loadTemplateSelection } from './template-selection.mjs';
+import { invalidateTemplateSelectionOutcome, loadTemplateSelection } from './template-selection.mjs';
 
 function safeName(name, fallback) {
   const ext = extname(name || '').toLowerCase().replace(/[^.a-z0-9]/g, '');
@@ -980,6 +980,94 @@ async function templateLearningSummary({ root, runId, manifest }) {
   };
 }
 
+async function existingPath(path) {
+  try { return await lstat(path); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; return null; }
+}
+
+async function verifyOwnedDirectory(path) {
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink() || relative(path, await realpath(path)) !== '') {
+    throw Object.assign(new Error('任务目录的归属无法确认。'), { status: 409 });
+  }
+}
+
+async function clearDiscardedRunProjections(root, runId, manifest) {
+  const jobKey = manifest.image_api?.job_key;
+  if (/^[a-zA-Z0-9_-]{8,128}$/.test(jobKey || '')) {
+    const dir = join(root, 'data', 'image-api-jobs');
+    if (await existingPath(dir)) {
+      await verifyOwnedDirectory(dir);
+      const path = join(dir, createHash('sha256').update(jobKey).digest('hex') + '.json');
+      const info = await existingPath(path);
+      if (info?.isSymbolicLink()) throw new Error('无法确认 API 任务文件的归属。');
+      if (info?.isFile()) {
+        const job = JSON.parse(await readFile(path, 'utf8'));
+        if (job.runId === runId) {
+          // Preserve the reservation so a late retry cannot repeat the original request.
+          await atomicWriteJson(path, { state: 'discarded', fingerprint: job.fingerprint });
+        }
+      }
+    }
+  }
+
+  const selectionId = manifest.template_selection?.selection_id
+    || manifest.template_references?.find(reference => reference.selection_id)?.selection_id;
+  if (selectionId) {
+    let selection;
+    try { selection = await loadTemplateSelection({ root, selectionId }); }
+    catch (error) { if (error.code !== 'selection_not_found' && error.code !== 'ENOENT') throw error; }
+    for (const outcome of selection?.active_outcomes || []) {
+      if (outcome.run_id !== runId) continue;
+      await invalidateTemplateSelectionOutcome({
+        root, selectionId, outcomeId: outcome.outcome_id, artifactId: outcome.artifact_id,
+        reason: 'attribution_invalidated',
+        reviewSourceEventId: outcome.review_source_event_id,
+        preferenceSourceEventId: outcome.preference_source_event_id,
+      });
+    }
+  }
+  if (Object.keys(manifest.artifact_reviews || {}).length) await rebuildReviewGuidance({ root });
+}
+
+export async function discardSavedRun({ root, runId, confirmed }) {
+  if (confirmed !== true) throw Object.assign(new Error('请先确认永久删除。'), { status: 409 });
+  assertRunId(runId);
+  const owner = await realpath(root);
+  const release = await acquireRunEventMutation(owner, runId);
+  try {
+    const runsRoot = join(owner, 'data', 'runs');
+    if (!await existingPath(runsRoot)) return { runId, discarded: true };
+    await verifyOwnedDirectory(runsRoot);
+    const { runDir } = pathsFor(owner, runId);
+    const pendingDir = join(runsRoot, '.discard-' + runId);
+    let manifest;
+    if (await existingPath(runDir)) {
+      await verifyOwnedDirectory(runDir);
+      const run = await loadRun({ root: owner, runId });
+      manifest = run.manifest;
+      if (manifest.run_id !== runId || !manifest.artifacts?.length
+          || ['staged', 'submitted', 'submission_uncertain', 'capture_pending'].includes(manifest.status)) {
+        throw Object.assign(new Error('只可弃用已经保存结果的任务。'), { status: 409 });
+      }
+      if (await existingPath(pendingDir)) throw new Error('发现冲突的删除目录。');
+      await rename(runDir, pendingDir);
+    }
+    if (await existingPath(pendingDir)) {
+      await verifyOwnedDirectory(pendingDir);
+      if (!manifest) {
+        const path = join(pendingDir, 'manifest.json');
+        if (await existingPath(path)) manifest = JSON.parse((await readFile(path, 'utf8')).replace(/^\uFEFF/, ''));
+      }
+      if (manifest?.run_id === runId) await clearDiscardedRunProjections(owner, runId, manifest);
+      await rm(pendingDir, { recursive: true, force: true, maxRetries: 3 });
+    }
+    return { runId, discarded: true };
+  } finally {
+    release();
+  }
+}
+
 export async function listRuns({ root, includeExcluded = false, artifactsOnly = true, limit = 100 } = {}) {
   const runsRoot = join(root, 'data', 'runs');
   let entries = [];
@@ -1082,22 +1170,25 @@ export async function listRuns({ root, includeExcluded = false, artifactsOnly = 
 export async function recordRunEvent({ root, runId, type, data = {}, recordedAt = new Date().toISOString() }) {
   const release = await acquireRunEventMutation(root, runId);
   try {
-    const run = await loadRun({ root, runId });
-    const event = {
-      schema_version: 'ai-img-gen.run-event.v1',
-      event_id: randomUUID(),
-      run_id: runId,
-      type,
-      recorded_at: recordedAt,
-      data,
-    };
-    await appendFile(pathsFor(root, runId).eventsPath, `${JSON.stringify(event)}\n`, 'utf8');
-    const manifest = applyEvent(run.manifest, event);
-    await atomicWriteJson(run.manifestPath, manifest);
-    return { ...run, manifest, events: [...run.events, event] };
+    return await appendRunEvent(await loadRun({ root, runId }), type, data, recordedAt);
   } finally {
     release();
   }
+}
+
+async function appendRunEvent(run, type, data, recordedAt = new Date().toISOString()) {
+  const event = {
+    schema_version: 'ai-img-gen.run-event.v1',
+    event_id: randomUUID(),
+    run_id: run.runId,
+    type,
+    recorded_at: recordedAt,
+    data,
+  };
+  await appendFile(join(run.runDir, 'events.jsonl'), `${JSON.stringify(event)}\n`, 'utf8');
+  const manifest = applyEvent(run.manifest, event);
+  await atomicWriteJson(run.manifestPath, manifest);
+  return { ...run, manifest, events: [...run.events, event] };
 }
 
 function strictRunSubmissionAttemptCount(manifest = {}) {
@@ -1205,7 +1296,16 @@ export async function updateRunRecord({ root, runId, customerName = '', prompt, 
 export async function importArtifacts({ root, runId, files = [], captureMethod = 'manual_import', source = {} }) {
   if (!files.length) throw new Error('At least one result image is required');
   if (files.length > 4) throw new Error('At most four result images can be imported at once');
-  let run = await loadRun({ root, runId });
+  const release = await acquireRunEventMutation(root, runId);
+  try {
+    const run = await loadRun({ root, runId });
+    return await writeRunArtifacts(run, files, captureMethod, source);
+  } finally {
+    release();
+  }
+}
+
+async function writeRunArtifacts(run, files, captureMethod, source) {
   const existingHashes = new Set(run.manifest.artifacts.map((item) => item.sha256));
   const uniqueFiles = [];
   for (const file of files) {
@@ -1239,12 +1339,7 @@ export async function importArtifacts({ root, runId, files = [], captureMethod =
       capture_source: file.source || source,
       captured_at: new Date().toISOString(),
     };
-    run = await recordRunEvent({
-      root,
-      runId,
-      type: captureMethod === 'manual_import' ? 'ArtifactImported' : 'ArtifactCaptured',
-      data: { artifact },
-    });
+    run = await appendRunEvent(run, captureMethod === 'manual_import' ? 'ArtifactImported' : 'ArtifactCaptured', { artifact });
     existingHashes.add(file.sha256);
   }
   return run;
@@ -1358,24 +1453,21 @@ export async function saveArtifactReview({ root, runId, artifactId, review, comp
 }
 
 export async function saveArtifactAnnotation({ root, runId, artifactId, payload, previewBytes }) {
-  const run = await loadRun({ root, runId });
-  const artifact = run.manifest.artifacts?.find((item) => item.artifact_id === artifactId);
-  if (!artifact) throw new Error('Artifact not found');
-  const recordedAt = new Date().toISOString();
-  const annotation = await writeAnnotationSession({
-    artifact,
-    payload,
-    previewBytes,
-    previousAnnotation: run.manifest.artifact_annotations?.[artifactId] || null,
-    recordedAt,
-  });
-  return recordRunEvent({
-    root,
-    runId,
-    type: 'ArtifactAnnotationRecorded',
-    data: { artifact_id: artifactId, annotation },
-    recordedAt,
-  });
+  const release = await acquireRunEventMutation(root, runId);
+  try {
+    const run = await loadRun({ root, runId });
+    const artifact = run.manifest.artifacts?.find(item => item.artifact_id === artifactId);
+    if (!artifact) throw new Error('Artifact not found');
+    const recordedAt = new Date().toISOString();
+    const annotation = await writeAnnotationSession({
+      artifact, payload, previewBytes,
+      previousAnnotation: run.manifest.artifact_annotations?.[artifactId] || null,
+      recordedAt,
+    });
+    return await appendRunEvent(run, 'ArtifactAnnotationRecorded', { artifact_id: artifactId, annotation }, recordedAt);
+  } finally {
+    release();
+  }
 }
 
 export async function loadArtifactAnnotation({ root, runId, artifactId }) {

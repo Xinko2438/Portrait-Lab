@@ -1460,6 +1460,7 @@ function renderCaptureBody(manifest=currentManifest,{busy=captureBusy}={}){
   document.getElementById('captureStateTitle').textContent=busy?'正在检测原图':saved?`已保存 ${artifacts.length} 张图片`:responsePending?'等待原图响应':pagePending?'等待页面就绪':warning?'需要检查任务':submitted?'等待生成结果':'等待任务提交';
   document.getElementById('captureStateDetail').textContent=saved?'点击下方图片查看原图':responsePending?'图片已显示，正在读取可验证的原图。':pagePending?'页面暂未就绪，稍后继续检测原任务。':state==='capture_tab_unavailable'?'请打开原 ChatGPT 对话后再检测。':warning?'可再次检测，或使用右侧手动导入。':submitted?'可检测原图，也可在右侧导入。':'提交后只检测对应对话中的结果。';
   document.getElementById('captureProcess').hidden=saved;
+  document.getElementById('discardRun').hidden=!saved;
   const grid=document.getElementById('captureOutputGrid');grid.hidden=!saved;
   grid.innerHTML=artifacts.map((artifact,index)=>`<button class="capture-output" type="button" data-capture-preview="${index}" aria-label="查看候选 ${artifact.ordinal||index+1} 原图"><img src="/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file" alt="候选 ${artifact.ordinal||index+1}"><span>候选 ${artifact.ordinal||index+1}</span><small>${artifact.width} × ${artifact.height}</small></button>`).join('');
 }
@@ -1663,7 +1664,7 @@ function renderRun(data) {
   elements.submitRun.disabled = manifest.status !== 'staged';
   const count = manifest.artifacts?.length || 0;
   elements.captureRun.disabled = captureBusy || (!count && !['submitted', 'submission_uncertain','capture_pending'].includes(manifest.status));
-  if(!captureBusy) elements.captureRun.textContent = count ? '继续评审' : manifest.image_api ? '查看 / 恢复 API 结果' : '检测并保存结果';
+  if(!captureBusy) elements.captureRun.textContent = count ? '前往评分' : manifest.image_api ? '查看 / 恢复 API 结果' : '检测并保存结果';
   elements.artifactImportForm.querySelector('input[type="file"]').disabled = count >= 4;
   elements.artifactImportForm.querySelector('button[type="submit"]').disabled = count >= 4;
   renderImportAction();
@@ -3058,8 +3059,47 @@ document.getElementById('captureOutputGrid').addEventListener('click',event=>{
   const items=(currentManifest.artifacts||[]).map((artifact,index)=>({kind:'generated',url:`/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file`,caption:`候选 ${artifact.ordinal||index+1}`}));
   openMediaPreview(items,Number(trigger.dataset.capturePreview),trigger);
 });
+const discardRunButton = document.getElementById('discardRun');
+const discardRunDialog = document.getElementById('discardRunDialog');
+let discardRunId = null;
+let discardRunBusy = false;
+discardRunButton.addEventListener('click', () => {
+  if (!currentRunId || !currentManifest?.artifacts?.length || discardRunBusy) return;
+  discardRunId = currentRunId;
+  discardRunDialog.showModal();
+});
+discardRunDialog.addEventListener('close', async () => {
+  const runId = discardRunId;
+  const confirmed = discardRunDialog.returnValue === 'discard';
+  discardRunId = null;
+  discardRunDialog.returnValue = '';
+  if (!confirmed || !runId || runId !== currentRunId || discardRunBusy) return;
+  discardRunBusy = true;
+  setBusy(discardRunButton, true, '正在删除');
+  elements.captureRun.disabled = true;
+  try {
+    await api(`/api/runs/${encodeURIComponent(runId)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmed: true }),
+    });
+    if (runId === currentRunId) {
+      generationMode?.reset();
+      window.location.replace('/?view=history');
+    }
+  } catch (error) {
+    if (runId === currentRunId) {
+      elements.resultMessage.hidden = false;
+      elements.resultMessage.textContent = `无法删除本次任务：${error.message}`;
+    }
+  } finally {
+    discardRunBusy = false;
+    elements.captureRun.disabled = false;
+    setBusy(discardRunButton, false);
+  }
+});
 elements.captureRun.addEventListener('click', async () => {
-  if (!currentRunId || captureBusy) return;
+  if (!currentRunId || captureBusy || discardRunBusy) return;
   if (currentManifest?.artifacts?.length) { setStage('review'); return; }
   if(currentManifest?.image_api){
     setBusy(elements.captureRun,true,'正在恢复 API 结果');
@@ -3435,3 +3475,5 @@ const queuedHomeNotice = sessionStorage.getItem(homeNoticeStorageKey);
 sessionStorage.removeItem(homeNoticeStorageKey);
 if (!currentRunId && queuedHomeNotice) elements.prepareResult.textContent = queuedHomeNotice;
 restoreRequestedRun();
+
+if (new URLSearchParams(window.location.search).get('view') === 'history') elements.openHistory.click();
