@@ -1613,3 +1613,87 @@ body[data-starting] .workbench-rail__home {
 }
 .template-loading-preview { display: flex; flex-wrap: wrap; gap: .75rem; }
 .template-loading-preview i { display: block; width: clamp(5rem, 16vw, 12rem); aspect-ratio: 2/3; background: #e2e6f1; border-radius: .65rem; }
+
+/* Let two review images size their own frames within the available gallery row. */
+.comparison-media-stage,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) {
+  --review-image-height: min(56dvh, 30rem);
+  gap: clamp(8px, 1vw, 16px);
+  padding: clamp(10px, 1.15vw, 18px);
+}
+
+.comparison-media-stage figure,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) > .artifact-candidate {
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+}
+
+.comparison-media-stage figure:first-child,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) > .artifact-candidate:first-child {
+  justify-self: end;
+}
+
+.comparison-media-stage figure:last-child,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) > .artifact-candidate:last-child {
+  justify-self: start;
+}
+
+.comparison-media-stage img,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) .artifact-image-wrap img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: var(--review-image-height);
+  object-fit: contain;
+}
+
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) :is(.candidate-open, .artifact-image-wrap) {
+  height: auto;
+}
+
+.comparison-media-stage figcaption,
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) .artifact-caption {
+  min-width: 0;
+  contain: inline-size;
+}
+
+/* Move scoring controls below the artwork once the frame follows the image. */
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) .artifact-image-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  background: transparent;
+}
+
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) .artifact-image-wrap img {
+  grid-column: 1 / -1;
+}
+
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) .artifact-rank {
+  display: none;
+}
+
+.artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) :is(.candidate-badge, .annotation-count) {
+  position: static;
+  max-width: 100%;
+  margin: 3px 5px;
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .comparison-media-stage,
+  .artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) {
+    container-type: size;
+  }
+
+  .comparison-media-stage figure,
+  .artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) > .artifact-candidate {
+    --review-image-height: max(0px, calc(100cqh - 36px));
+  }
+
+  .artifact-gallery:has(> .artifact-candidate:nth-child(2):last-child) > .artifact-candidate {
+    --review-image-height: max(0px, calc(100cqh - 64px));
+  }
+}
