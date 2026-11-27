@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'; connect-src 'self'; img-src 'self' blob: data:; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portrait Lab · AI 写真</title>
+<link rel="icon" type="image/svg+xml" href="/folio/portrait-lab/brand/portrait-lab.svg" sizes="any">
+
+  <link rel="stylesheet" href="/folio/portrait-lab/app.css?v=935da8c7d4bc">
+  <link rel="stylesheet" href="/folio/portrait-lab/workbench-shell.css">
+</head>
+<body data-starting data-smart-task="enabled">
+  <section id="portraitStartup" class="portrait-startup">
+    <p class="sr-only" role="status">正在加载工作台…</p><a class="quiet-button" href="" hidden>重新加载</a>
+    <noscript><p class="portrait-startup-noscript">请启用 JavaScript 后打开工作台。</p></noscript>
+  </section>
+  <main class="app-shell workbench-shell" inert>
+    <nav class="workbench-rail" id="workbenchRail" data-page="workbench" aria-label="工作区导航">
+    <button type="button" id="returnWorkbench" class="workbench-icon-button workbench-rail__home" aria-label="返回工作台" data-tooltip="返回工作台">
+      <span class="workbench-rail__brand" aria-hidden="true"></span>
+    </button>
+    <button type="button" id="newTaskButton" class="workbench-icon-button" data-nav-key="new-task" aria-label="新建任务" data-tooltip="新建任务"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></button>
+    <div class="workbench-rail__stages" role="group" aria-label="写真任务流程">
+      <button type="button" class="workbench-icon-button" data-nav-key="references" data-stage-target="references" aria-label="参考图" data-tooltip="参考图"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.4"/><path d="m4 17 5-5 3.5 3 2.5-2 5 5"/></svg></button>
+      <button type="button" class="workbench-icon-button" data-nav-key="results" data-stage-target="results" aria-label="生成与结果" data-tooltip="生成与结果" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 15l3-3 2.5 2 2.5-3 4 5M8 8h.01"/><path d="M16 2v4M14 4h4"/></svg></button>
+      <button type="button" class="workbench-icon-button" data-nav-key="review" data-stage-target="review" aria-label="评审选择" data-tooltip="评审选择" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 12 2.5 2.5L16 9"/></svg></button>
+    </div>
+    <div class="workbench-rail__pages" role="group" aria-label="工作区页面">
+      <button type="button" id="openHistory" class="workbench-icon-button" data-nav-key="history" aria-label="历史生成结果" data-tooltip="历史生成结果"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.3-5.8M3.5 4.5v4.8h4.8M12 7.5V12l3.2 2"/></svg></button>
+      <a href="/folio/portrait-lab/face-tagging.html" class="workbench-icon-button" data-nav-key="tagging" aria-label="模板标注" data-tooltip="模板标注"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l9 9-7 7-9-9V4Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg></a>
+    </div>
+    <div class="workbench-rail__actions" role="group" aria-label="工作区操作">
+      <button type="button" id="checkBrowser" class="workbench-icon-button" data-nav-key="connection" aria-label="检查 ChatGPT 连接" data-tooltip="检查 ChatGPT 连接" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M7 8H5a4 4 0 0 0 0 8h2M17 8h2a4 4 0 0 1 0 8h-2"/></svg><span class="workbench-rail__connection" aria-hidden="true"></span><span id="browserState" hidden>尚未检查</span></button>
+      <button type="button" id="openGenerationSettings" class="workbench-icon-button" data-nav-key="settings" aria-label="API 生图配置" data-tooltip="API 生图配置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
+    </div></nav>
+    <div hidden aria-label="当前任务状态">
+      <span><small>RUN</small><strong id="runId">NEW RUN</strong></span>
+      <button class="copy-run-id" type="button" id="copyRunId" aria-label="复制完整 Run ID" title="复制完整 Run ID" hidden>复制</button>
+      <span class="state-badge neutral" id="runStatus">等待输入</span>
+      <strong id="appState">检查中</strong>
+    </div>
+
+    <div class="stage-container workbench-content">
+      <section class="stage-panel references-panel" data-stage-panel="references" id="createCard">
+        <form id="runForm" class="reference-workspace">
+          <input type="hidden" id="customerName" name="customerName">
+          <div class="reference-canvas">
+            <section class="reference-upload-card">
+              <div class="reference-section-heading" id="identitySectionHeading">
+                <div><span class="reference-number">01</span><div><strong>客户照片</strong><small>先选照片；一张清晰照片就可以</small></div></div>
+                <span class="quality-badge" id="identityQuality">等待上传</span>
+                <div class="identity-coverage" id="identityCoverage">
+                  <span id="identityAngleStatus" aria-live="polite">第一张自动作为主图，也可以点击更换</span>
+                  <details class="identity-angle-fallback"><summary>角度备注</summary><div class="identity-angle-chips">
+                    <label class="coverage-chip"><input type="checkbox" name="identityAngles" value="frontal"><span>正脸</span></label>
+                    <label class="coverage-chip"><input type="checkbox" name="identityAngles" value="left_45"><span>左 45°</span></label>
+                    <label class="coverage-chip"><input type="checkbox" name="identityAngles" value="right_45"><span>右 45°</span></label>
+                    <label class="coverage-chip"><input type="checkbox" name="identityAngles" value="full_profile"><span>完整侧脸</span></label>
+                    <label class="coverage-chip"><input type="checkbox" name="identityAngles" value="other"><span>其他</span></label>
+                  </div></details>
+                </div>
+                <div id="existingCustomerFields" class="field"><label for="customerSelector">客户</label><select id="customerSelector" name="customerId"><option value="">临时上传（仅本次）</option></select></div>
+              </div>
+              <section class="customer-photo-pool" id="customerPhotoPool" data-paste-target="customer-pool" tabindex="0" hidden aria-label="客户照片池，可按 Ctrl+V 添加图片">
+                <div class="customer-photo-pool-heading"><div><strong>从客户照片池选择</strong><span id="customerPhotoPoolSummary">等待选择客户</span></div><div class="customer-photo-pool-actions"><button type="button" class="secondary compact-action" id="appendCustomerPhotosButton">添加照片</button></div></div>
+                <input id="customerPhotoAppendInput" class="customer-photo-append-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+                <p class="reference-paste-helper">右键照片可重命名或删除；将鼠标移到照片池区域后按 Ctrl+V 可直接添加图片，均无需提交任务。</p>
+                <div class="customer-photo-pool-grid horizontal-photo-strip" id="customerPhotoPoolGrid" role="listbox" aria-multiselectable="true"></div>
+                <p class="customer-photo-pool-message" id="customerPhotoPoolMessage" aria-live="polite"></p>
+              </section>
+              <div id="identityUploadWorkspace">
+                <input id="identity" name="identity" class="reference-file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+                <div id="identityPreviewGrid" class="identity-preview-grid horizontal-photo-strip" data-paste-target="identity" tabindex="0" aria-label="身份参考图，可按 Ctrl+V 粘贴图片">
+                  <label class="reference-preview-tile add-reference required-slot" for="identity"><span class="add-icon">+</span><strong>添加客户照片</strong><small>拖入或选择图片</small></label>
+                </div>
+                <p class="reference-paste-helper" id="identityPasteHelper">也可以把图片直接粘贴到这里。</p>
+                <div id="newCustomerFields" class="customer-profile-save" hidden>
+                  <button class="quiet-button" type="button" id="openCustomerProfile" aria-haspopup="dialog" aria-controls="customerProfileDialog">保存为客户</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="reference-upload-card template-reference-card">
+              <div class="reference-section-heading"><div><span class="reference-number">02</span><div><strong>选择模板</strong><small>选择想要的构图、动作和风格</small></div></div><div class="template-heading-actions"><button type="button" class="secondary compact-action" id="openTemplateLibraryButton">从模板库选</button><span class="quality-badge">只参考风格</span></div></div>
+              <input id="templates" name="templates" class="reference-file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+              <div id="templatePreviewGrid" class="template-preview-grid" data-paste-target="templates" tabindex="0" aria-label="模板参考图，可按 Ctrl+V 粘贴图片">
+                <label class="reference-preview-tile add-reference" for="templates"><span class="add-icon">+</span><strong>添加自己的模板</strong><small>拖入或选择图片</small></label>
+              </div>
+              <p class="reference-paste-helper" id="templatePasteHelper">也可以把模板图片直接粘贴到这里。</p>
+            </section>
+          </div>
+
+          <div class="reference-splitter" id="referenceSplitter" role="separator" tabindex="0"
+            aria-orientation="vertical" aria-labelledby="generationSettingsHeading"
+            aria-controls="referenceSettings" title="拖动调整宽度，双击恢复默认"></div>
+          <aside class="task-brief" id="referenceSettings">
+            <div class="task-brief-scroll">
+            <div class="task-brief-heading"><h2 id="generationSettingsHeading">任务设置</h2></div>
+            <div class="field generation-mode-field"><label for="generationMode">用什么生成</label><select id="generationMode"><option value="web">ChatGPT 网页版</option><option value="api">API 生图</option></select></div>
+            <div class="field"><label for="userSupplement">想补充什么？（可不填）</label><textarea id="userSupplement" name="userSupplement" placeholder="例如：背景更亮、穿黑色西装。没有特殊要求可以留空。"></textarea></div>
+            <div id="apiModeOptions" class="api-quick-options" hidden>
+              <div class="field"><label for="apiImageCount">生成张数</label><select id="apiImageCount"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+            </div>
+            <input type="hidden" id="prompt" name="prompt" value="">
+            <section class="task-options-entry" id="moreTaskSettings">
+              <button type="button" id="openTaskOptions" class="task-options-trigger" aria-haspopup="dialog" aria-controls="taskOptionsDialog"><span><strong>更多设置</strong><small>用途、风格与画面细节 · 可选</small></span><span class="task-options-arrow" aria-hidden="true">›</span></button>
+              <dialog class="advanced-reference-settings task-options-dialog" id="taskOptionsDialog" aria-labelledby="taskOptionsTitle" aria-describedby="taskOptionsDescription">
+                <header class="task-options-header"><div><h2 id="taskOptionsTitle">更多设置</h2><p id="taskOptionsDescription">只调整你关心的项目，其余保持自动。</p></div><button type="button" id="closeTaskOptions" class="task-options-close" aria-label="关闭更多设置" autofocus>×</button></header>
+              <div class="advanced-settings-body" id="taskOptionsBody" tabindex="0" role="region" aria-label="更多设置内容">
+                <div class="field"><label for="intendedUse">成片用途（可选）</label><select id="intendedUse" name="intendedUse"><option value="custom">普通人物写真（自动）</option><option value="livestream_cover">直播封面</option><option value="social_avatar">社交媒体头像</option><option value="personal_ip_poster">个人 IP 海报</option><option value="course_promotion">课程宣传</option><option value="company_profile">企业宣传</option><option value="event_poster">活动海报</option><option value="professional_portrait">职业形象</option><option value="lifestyle_portrait">生活写真</option></select></div>
+                <section id="apiAdvancedOptions" class="api-advanced-options" hidden>
+                  <div class="field"><label for="apiOperation">生成内容</label><select id="apiOperation"><option value="edit">用客户图和模板生成写真</option><option value="generate">只按文字生成</option></select></div>
+                  <div class="brief-grid">
+                    <div class="field"><label for="apiImageSize">画面比例</label><select id="apiImageSize"><option value="1024x1536">竖版</option><option value="1024x1024">方形</option><option value="1536x1024">横版</option><option value="auto">自动</option></select></div>
+                    <div class="field"><label for="apiImageQuality">生成质量</label><select id="apiImageQuality"><option value="auto">自动</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
+                  </div>
+                  <details><summary>局部编辑区域（可选）</summary><input id="apiMask" class="history-file-input polished-file-input" type="file" accept="image/png" data-upload-preview="apiMaskPreview"><label class="history-image-picker upload-image-picker" for="apiMask"><span class="upload-picker-icon" aria-hidden="true">＋</span><span><strong>选择蒙版图片</strong><small>透明 PNG，与原图尺寸一致</small></span><em data-file-status>尚未选择</em></label><div id="apiMaskPreview" class="upload-selection" aria-live="polite"></div></details>
+                  <p id="apiModeStatus" class="notice" aria-live="polite"></p>
+                  <button type="button" class="secondary compact-action" id="configureImageApi">配置 API</button>
+                </section>
+                <div class="field"><label for="smartStyleCategory">想指定风格时再选</label><select id="smartStyleCategory"><option value="">自动</option></select></div>
+                <div class="brief-grid">
+                  <div class="field"><label for="targetFraming">目标景别</label><select id="targetFraming" name="targetFraming" required><option value="follow_template">跟随模板</option><option value="close_up">头像近景</option><option value="bust">胸像</option><option value="half_body">半身</option><option value="three_quarter">七分身</option><option value="full_body">全身</option><option value="environmental_portrait">环境人像</option></select></div>
+                  <div class="field"><label for="targetIntentAngle">目标角度</label><select id="targetIntentAngle" name="targetIntentAngle"><option value="follow_identity">跟随身份主图</option><option value="follow_template">跟随模板</option><option value="front">正脸</option><option value="slight_turn">轻微侧转</option><option value="left_45">左 45°</option><option value="right_45">右 45°</option><option value="profile">完整侧脸</option></select></div>
+                  <div class="field"><label for="layoutIntent">版式用途</label><select id="layoutIntent" name="layoutIntent"><option value="follow_template">跟随模板</option><option value="no_text">不需要文字</option><option value="copy_left">左侧留标题区</option><option value="copy_right">右侧留标题区</option><option value="copy_top">顶部留标题区</option><option value="copy_bottom">底部留信息区</option></select></div>
+                  <div class="field"><label for="targetAngle">本次出图角度（兼容字段）</label><select id="targetAngle" name="targetAngle" required><option value="frontal">正脸</option><option value="left_45">左 45 度</option><option value="right_45">右 45 度</option><option value="full_profile">完整侧脸</option><option value="other">其他</option></select></div>
+                  <div class="field"><label for="businessDomain">客户领域</label><input id="businessDomain" name="businessDomain" placeholder="例如：健康管理、企业服务、个人 IP"></div>
+                </div>
+                <fieldset class="intent-options" id="temperamentOptions"><legend>人物气质（可多选）</legend><label><input type="checkbox" name="temperamentKeywords" value="professional">专业</label><label><input type="checkbox" name="temperamentKeywords" value="trustworthy">可信</label><label><input type="checkbox" name="temperamentKeywords" value="approachable">亲和</label><label><input type="checkbox" name="temperamentKeywords" value="premium">高级</label><label><input type="checkbox" name="temperamentKeywords" value="cool">冷峻</label><label><input type="checkbox" name="temperamentKeywords" value="energetic">活力</label><label><input type="checkbox" name="temperamentKeywords" value="calm">沉稳</label><label><input type="checkbox" name="temperamentKeywords" value="technological">科技感</label><label><input type="checkbox" name="temperamentKeywords" value="editorial">杂志感</label><label><input type="checkbox" name="temperamentKeywords" value="cinematic">电影感</label></fieldset>
+                <details class="visual-analysis-details"><summary>照片分析与推荐</summary><p id="customerVisualStatus" role="status">选择客户图后自动推荐。</p><button type="button" class="quiet-button" id="reanalyzeCustomer">重新分析所选客户图</button><small>重新分析可能计费；不会触发生图。</small></details>
+                <details id="sendPromptPreviewDetails" class="generation-explanation"><summary>查看系统整理的生成说明</summary><section class="compiled-prompt-panel"><div class="recommendations-header"><div><strong>生成说明</strong><small>系统会在开始前重新核对客户图和模板</small></div><button type="button" class="secondary compact-action" id="previewCompiledPrompt">更新说明</button></div><pre id="compiledPromptPreview">选好客户图和模板后，这里会显示系统整理的要求。</pre><div class="notice compact" id="promptCompilationNotice"></div></section></details>
+              </div>
+                <footer class="task-options-footer"><p id="taskOptionsScrollHint" aria-live="polite">下方还有设置 · 向下滚动</p><div><small>修改保留在本次任务，关闭不会开始生成</small><button type="button" id="doneTaskOptions" class="primary">完成设置</button></div></footer>
+              </dialog>
+            </section>
+            <!-- Template Recommendation Section -->
+            <p class="customer-visual-status" id="customerVisualNotice" role="status" hidden></p>
+            <div id="smartTaskConflicts" class="notice" hidden></div>
+            <section class="recommendations-section" id="recommendationsSection" aria-label="智能推荐模板" hidden>
+              <div class="recommendations-header">
+                <div>
+                  <strong>推荐模板</strong>
+                  <small>根据客户图和你的要求提供参考</small>
+                </div>
+                <button type="button" class="secondary compact-action" id="requestRecommendationsButton">刷新推荐</button>
+              </div>
+
+              <div id="recommendationStateNotice" class="notice compact" hidden></div>
+
+              <div id="recommendationsContainer" class="recommendations-container" hidden>
+                <div class="top4-section">
+                  <div class="recommendation-row-heading">
+                    <span>首选 Top 4 推荐</span>
+                    <small>点击卡片切换主模板；可单独查看大图</small>
+                  </div>
+                  <div id="top4RecommendationsGrid" class="recommendations-grid"></div>
+                </div>
+
+                <section class="safe-inspiration-section" id="safeInspirationSection" aria-labelledby="safeInspirationTitle">
+                  <div class="recommendation-row-heading"><div><span id="safeInspirationTitle">更多灵感</span><small>符合当前照片和要求的其他方向</small></div><button type="button" class="secondary compact-action" id="refreshSafeInspirationButton">换一组</button></div>
+                  <div id="safeInspirationGrid" class="recommendations-grid" aria-live="polite"></div>
+                  <div id="safeInspirationMessage" class="notice compact">获取推荐后可刷新安全灵感。</div>
+                </section>
+
+                <details id="top10RecommendationsDisclosure" class="top10-disclosure">
+                  <summary>查看更多备选（不含 Top 4）</summary>
+                  <div class="recommendation-alternatives-toolbar"><span id="recommendationAlternativesCount">显示前 10 张备选</span><button type="button" class="quiet-button" id="toggleAllRecommendationsButton" hidden>展开全部</button></div>
+                  <div id="top10RecommendationsGrid" class="recommendations-grid top10-grid"></div>
+                </details>
+              </div>
+            </section>
+
+            </div>
+            <footer class="task-brief-footer">
+              <div class="notice compact" id="prepareResult" role="status"></div>
+              <p id="creationReadiness" class="creation-readiness" aria-live="polite">先添加一张客户照片，即可继续</p>
+              <button class="primary task-submit" type="submit" aria-describedby="creationReadiness prepareResult" id="prepareRun">开始生成</button>
+              <a class="primary task-submit" id="openTravelCase" href="?run=run-demo-selected&amp;from=history&amp;stage=results">查看案例结果</a>
+            </footer>
+          </aside>
+        </form>
+      </section>
+
+      <section class="stage-panel results-panel" data-stage-panel="results" hidden>
+        <div class="result-layout">
+          <section class="card input-reference-card"><h2>输入原图</h2><div id="resultIdentityReferences" class="result-identity-references"></div></section>
+          <section class="card capture-card result-method-card">
+            <div class="capture-copy"><h2>生成结果</h2><div class="capture-overview" id="captureOverview" role="status" aria-live="polite"><span class="capture-state-icon" id="captureStateIcon" aria-hidden="true">·</span><div><strong id="captureStateTitle">等待任务状态</strong><small id="captureStateDetail">只保存当前任务对应的原图。</small></div></div></div>
+            <div class="capture-body">
+              <ol class="capture-process" id="captureProcess"><li><span>1</span><div><strong>确认本次任务</strong><small>只读取当前任务对应的结果</small></div></li><li><span>2</span><div><strong>核对图片来源</strong><small>区分生成结果与参考图片</small></div></li><li><span>3</span><div><strong>保存完整原图</strong><small>校验图片并过滤重复结果</small></div></li></ol>
+              <div class="capture-waiting" id="captureWaiting" hidden><progress aria-label="正在处理生成结果" class="workbench-spinner"></progress></div>
+              <div class="capture-result-grid" id="captureOutputGrid" hidden aria-label="已保存的结果图片"></div>
+            </div>
+          </section>
+          <section class="card import-card result-method-card" id="captureFallback" hidden>
+            <div class="capture-copy"><h2>人工导入结果</h2><p class="subcopy">导入已下载的图片，不会重新生成。</p></div>
+            <form id="artifactImportForm" class="result-import-form">
+              <div class="field grow"><input id="artifactResults" class="history-file-input polished-file-input" name="results" type="file" accept="image/png,image/jpeg,image/webp" multiple required data-max-files="4" data-upload-preview="artifactResultsPreview"><label class="history-image-picker upload-image-picker" for="artifactResults"><span class="upload-picker-icon" aria-hidden="true">＋</span><span><strong>选择结果图片</strong><small>PNG、JPG 或 WebP · 最多 4 张</small></span><em data-file-status>尚未选择</em></label><div id="artifactResultsPreview" class="upload-selection" aria-live="polite"></div></div>
+              <div id="artifactImportActions" class="import-actions result-method-actions"><button class="primary" type="submit" disabled>导入图片</button></div>
+            </form>
+          </section>
+        </div>
+        <div class="result-decision-bar" aria-label="本次结果的下一步">
+          <div class="result-secondary-actions"><button class="secondary" type="button" id="remakeRun" title="沿用本次原图、模板和要求，调整后再生成；本次结果保留" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></svg>沿用素材重做</button><button class="quiet-button" type="button" id="deferRun" title="保留本次结果和评分进度，开始新任务" hidden>新建任务</button></div>
+          <div class="result-primary-actions">
+            <button class="secondary" type="button" id="discardRun" aria-haspopup="dialog" hidden>弃用结果</button>
+            <button class="primary" type="button" id="captureRun" disabled>检测并保存结果</button>
+          </div>
+        </div>
+        <div class="notice result-notice" id="resultMessage">尚未保存结果。</div>
+        <details class="generation-recovery" id="generationRecovery"><summary>任务未完成？查看恢复操作</summary>        <div class="generation-layout">
+          <section class="card generation-card">
+            <div class="card-heading"><div><span class="section-kicker">Reference preflight</span><h2>参考图预检</h2></div></div>
+            <div class="preflight-message" id="preflightMessage">等待任务预检。</div>
+            
+          </section>
+          <section class="card action-card">
+            <div class="action-step"><span class="action-number">01</span><div><strong>装载到 ChatGPT</strong><p>把身份图、模板图和提示词放入默认 Chrome 的全新对话，但不发送。</p></div><button class="secondary" type="button" id="stageRun">确认装载</button></div>
+            <div class="action-step"><span class="action-number">02</span><div><strong>发送一次</strong><p>在网页确认内容后执行唯一一次发送，失败不会自动重试。</p></div><button class="primary" type="button" id="submitRun" disabled>确认发送</button></div>
+            <div class="notice" id="workflowResult">任务尚未装载。</div>
+          </section>
+        </div>
+        </details>
+      </section>
+
+      <section class="stage-panel review-panel" data-stage-panel="review" hidden>
+        <section id="resultWorkbench" class="result-workbench card" aria-label="参考对照与生成详情" hidden></section>
+        <div class="review-workspace" id="reviewWorkspace">
+          <section class="gallery-pane">
+            <header class="gallery-toolbar">
+              <div><h1>候选结果</h1></div>
+              <button type="button" class="secondary compact-action" id="openResultWorkbench">参考对照与生成详情</button>
+              <div class="review-stats"><span>已评审 <strong id="reviewedCount">0 / 0</strong></span><span>通过门槛 <strong id="qualifiedCount">0</strong></span></div>
+            </header>
+            <div id="artifactGallery" class="artifact-gallery"><div class="empty-state">保存结果后，候选图片会在这里并排展示。</div></div>
+            <div class="comparison-media-stage" id="comparisonMediaStage" aria-label="当前 A/B 候选预览" hidden>
+              <figure><img id="comparisonPreviewA" alt="候选 A 预览"><figcaption id="comparisonPreviewALabel">候选 A</figcaption></figure>
+              <span class="comparison-versus" aria-hidden="true">VS</span>
+              <figure><img id="comparisonPreviewB" alt="候选 B 预览"><figcaption id="comparisonPreviewBLabel">候选 B</figcaption></figure>
+            </div>
+            <div class="review-reference-strip" id="reviewReferences" aria-label="评分参照" hidden></div>
+            <div class="gate-note"><strong>身份底线</strong><span>人脸一致性低于 8.0 直接终止，不进入最好看比较。</span><span class="rubric-version">portrait-review-v3</span></div>
+          </section>
+          <aside class="review-action-panel">
+            <nav class="review-step-navigation" id="reviewStepNavigation" aria-label="评审步骤">
+              <button type="button" data-review-step-target="score" aria-selected="false"><span>1</span><strong>评分</strong><small>查看与修改</small></button>
+              <button type="button" data-review-step-target="choice" aria-selected="false"><span>2</span><strong>选择</strong><small>对比与交付</small></button>
+            </nav>
+            <div class="review-action-content">
+              <aside class="artifact-inspector" id="artifactInspector"><div class="inspector-empty"><strong>选择一张候选图</strong><span>评分和备注会集中显示在这里。</span></div></aside>
+              <section class="review-step-panel aesthetic-comparison-panel" id="aestheticComparisonPanel" hidden>
+              <header class="decision-section-heading"><span><strong>2. 纯审美 A/B 对比</strong><small>只比较三项门槛通过的两张候选</small></span><span id="aestheticComparisonMessage">至少需要两张合格候选</span></header>
+              <div class="decision-unavailable" id="comparisonUnavailable"><strong>暂时无法进行 A/B 对比</strong><span>至少需要两张通过三项门槛的候选。</span></div>
+              <form id="aestheticComparisonForm" hidden>
+                <div class="comparison-pair-grid">
+                  <div class="field"><label for="comparisonArtifactA">候选 A</label><select id="comparisonArtifactA" name="artifactAId"><option value="">等待合格候选</option></select></div>
+                  <div class="field"><label for="comparisonArtifactB">候选 B</label><select id="comparisonArtifactB" name="artifactBId"><option value="">等待合格候选</option></select></div>
+                </div>
+                <div class="comparison-outcome-grid" role="group" aria-label="审美对比结果">
+                  <button type="button" data-comparison-outcome="a"><strong>A 更好</strong><small>记录 A 胜 B</small></button>
+                  <button type="button" data-comparison-outcome="b"><strong>B 更好</strong><small>记录 B 胜 A</small></button>
+                  <button type="button" data-comparison-outcome="tie"><strong>差不多</strong><small>记录 tie</small></button>
+                  <button type="button" data-comparison-outcome="skip"><strong>跳过</strong><small>记录 skip</small></button>
+                </div>
+                <div class="field"><label for="comparisonNotes">对比备注（可选）</label><textarea id="comparisonNotes" name="notes" class="short-textarea" placeholder="只记录这两张之间的审美差异。"></textarea></div>
+              </form>
+              </section>
+              <section class="review-step-panel preference-panel" id="preferencePanel" hidden>
+              <header class="decision-section-heading"><span><strong>3. 最终交付选择</strong><small>与 A/B 审美证据分开记录</small></span><span id="preferenceMessage">尚未记录</span></header>
+              <form id="preferenceForm">
+                <div class="decision-grid">
+                  <label class="decision-option"><input type="radio" name="decision" value="winner"><span><strong>选出最终交付的一张</strong><small>只能从三项门槛通过的候选中选择</small></span></label>
+                  <label class="decision-option"><input type="radio" name="decision" value="none"><span><strong>全部不要</strong><small>本次没有值得交付的结果</small></span></label>
+                  <label class="decision-option"><input type="radio" name="decision" value="pending" checked><span><strong>暂不决定</strong><small>保留评分和对比，之后再选</small></span></label>
+                </div>
+                <div class="preference-fields">
+                  <div class="field" id="winnerField" hidden><label for="winnerArtifactId">最终交付候选</label><select id="winnerArtifactId" name="winnerArtifactId"><option value="">请先完成逐图评分</option></select></div>
+                  <div class="field"><label for="preferenceNotes">交付备注</label><textarea id="preferenceNotes" name="notes" class="short-textarea" placeholder="记录最终交付决定；诊断标签只是参考，不会自动替你淘汰。"></textarea></div>
+                  <button class="primary" type="submit" id="savePreference">保存最终选择</button>
+                </div>
+              </form>
+              </section>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div>
+<section class="history-page workbench-content" id="historyPage" aria-labelledby="historyPageTitle" hidden>
+    <div class="history-shell">
+      <header class="history-header">
+        <div><h1 id="historyPageTitle" tabindex="-1">历史生成结果</h1><p id="historyNavigationMessage" class="history-navigation-message" aria-live="polite"></p></div>
+        <div class="history-header-actions" role="group" aria-label="历史操作">
+          <button class="workbench-icon-button" type="button" id="refreshHistory" aria-label="刷新记录" data-tooltip="刷新记录">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4v5h-5M20 9a8 8 0 1 0 0 6"/></svg>
+          </button>
+          <button class="workbench-icon-button" type="button" id="openHistoryImport" aria-label="导入已有成品" data-tooltip="导入已有成品">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>
+          </button>
+          <button class="workbench-icon-button" type="button" id="historyShowDeleted" aria-label="已删除记录" aria-pressed="false" data-tooltip="已删除记录">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5m4-5v5"/></svg>
+          </button>
+          <button class="workbench-icon-button" type="button" id="historyHeaderAction" aria-label="返回工作台" data-tooltip="返回工作台">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m6-6-6 6 6 6"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="history-content" id="historyContent">
+        <section class="history-library" id="historyLibraryView" aria-label="历史生成记录">
+          <div class="history-filters" id="historyFilters" role="group" aria-label="历史筛选">
+            <label class="history-search"><span class="sr-only">搜索客户、批次、用途或提示词</span><input type="search" id="historySearch" placeholder="搜索客户、批次、用途或提示词"></label>
+            <label><span class="sr-only">按客户筛选</span><select id="historyCustomerFilter" aria-label="按客户筛选"><option value="">全部客户</option></select></label>
+            <label><span class="sr-only">按结果筛选</span><select id="historyStatusFilter" aria-label="按结果筛选">
+              <option value="all">全部记录</option>
+              <optgroup label="按处理进度"><option value="pending">待处理</option><option value="pending_review">待评分</option><option value="pending_choice">待最终选择</option><option value="completed">已完成</option></optgroup>
+              <optgroup label="按图片结果"><option value="final">最终成品</option><option value="qualified">合格备选</option><option value="rejected">已淘汰</option></optgroup>
+            </select></label>
+            <label><span class="sr-only">排序</span><select id="historySort" aria-label="排序"><option value="newest">最新在前</option><option value="oldest">最早在前</option></select></label>
+            <span class="history-result-count" id="historyResultCount" aria-live="polite">0 条记录</span>
+          </div>
+          <div class="history-list" id="historyList"><div class="empty-state">正在读取历史记录。</div></div>
+        </section>
+        <section class="history-import-view" id="historyImportView" hidden>
+        <aside class="history-import-panel">
+          <div class="history-import-heading"><span class="section-kicker">Manual import</span><h3>导入已有成品</h3><p>一次建立一条完整记录，不会打开或提交 ChatGPT。</p></div>
+          <form id="historyImportForm" class="history-import-form">
+            <div class="field"><label for="historyCustomerName">客户名称</label><input id="historyCustomerName" name="customerName" required placeholder="例如：林女士"></div>
+            <div class="field"><label for="historyBatchLabel">批次名称</label><input id="historyBatchLabel" name="batchLabel" placeholder="例如：2026-08 商务写真"></div>
+            <div class="field"><label for="historyPrompt">当时使用的完整提示词</label><textarea id="historyPrompt" name="prompt" required placeholder="粘贴生成这些成品时实际使用的提示词。"></textarea></div>
+            <div class="history-file-grid">
+              <div class="history-file-field"><span>客户身份原图</span><input id="historyIdentityFiles" class="history-file-input" name="identity" type="file" accept="image/png,image/jpeg,image/webp" multiple required><label class="history-image-picker" for="historyIdentityFiles"><svg class="image-picker-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5.5 17 4.2-4.1 3.1 2.8 2.1-2 3.6 3.3"/></svg><strong>选择图片</strong><em data-file-status>尚未选择</em></label><small>同一客户，可多张</small></div>
+              <div class="history-file-field"><span>构图 / 风格参考</span><input id="historyTemplateFiles" class="history-file-input" name="templates" type="file" accept="image/png,image/jpeg,image/webp" multiple required><label class="history-image-picker" for="historyTemplateFiles"><svg class="image-picker-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5.5 17 4.2-4.1 3.1 2.8 2.1-2 3.6 3.3"/></svg><strong>选择图片</strong><em data-file-status>尚未选择</em></label><small>可多张</small></div>
+              <div class="history-file-field full"><span>生成成品</span><input id="historyResultFiles" class="history-file-input" name="results" type="file" accept="image/png,image/jpeg,image/webp" multiple required><label class="history-image-picker" for="historyResultFiles"><svg class="image-picker-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5.5 17 4.2-4.1 3.1 2.8 2.1-2 3.6 3.3"/></svg><strong>选择图片</strong><em data-file-status>尚未选择</em></label><small>每条记录最多 4 张</small></div>
+            </div>
+            <input type="hidden" name="identityAngles" value="frontal">
+            <input type="hidden" name="targetAngle" value="frontal">
+            <input type="hidden" name="targetFraming" value="half_body">
+            <input type="hidden" name="intendedUse" value="历史写真归档">
+            <div class="notice compact" id="historyImportMessage">导入只写入本地历史，不会触发生成。</div>
+            <button class="primary" type="submit">导入为新记录</button>
+          </form>
+        </aside>
+        </section>
+      </div>
+      <section class="history-record-view" id="historyRecordView" hidden>
+        <header class="history-record-header">
+          <div><span class="section-kicker">Record detail</span><h3 id="historyRecordTitle">历史记录</h3><p id="historyRecordSummary">查看本次输入、成品和评分进度。</p></div>
+          <button class="primary" type="button" id="openRecordReview">评分与批注</button>
+          <button class="secondary" type="button" id="reuseHistorySettings">沿用这次设置</button>
+        </header>
+        <div class="history-record-content">
+          <section class="history-record-media" id="historyRecordMedia" aria-label="记录图片"></section>
+          <aside class="history-record-editor">
+            <details id="historyGenerationDetails" class="generation-details"><summary>生成详情（发送记录）</summary></details>
+            <div class="history-import-heading"><span class="section-kicker">Editable metadata</span><h3>记录信息</h3><p>修改会追加版本记录，不会覆盖最初的提示词文件。</p></div>
+            <form id="historyRecordForm" class="history-import-form">
+              <input type="hidden" name="runId">
+              <div class="field"><label for="recordCustomerName">客户名称</label><input id="recordCustomerName" name="customerName" placeholder="客户名称"></div>
+              <div class="field"><label for="recordBatchLabel">批次名称</label><input id="recordBatchLabel" name="batchLabel" placeholder="批次名称"></div>
+              <div class="field"><label for="recordIntendedUse">使用场景</label><input id="recordIntendedUse" name="intendedUse" placeholder="例如：直播海报、社交头像"></div>
+              <div class="field"><label for="recordPrompt">历史提示词说明（可编辑）</label><textarea id="recordPrompt" name="prompt" required placeholder="用于整理记录，不会改写发送时的请求快照。"></textarea></div>
+              <div class="notice compact" id="historyRecordMessage">尚未修改。</div>
+              <button class="primary" type="submit">保存记录信息</button>
+            </form>
+          </aside>
+        </div>
+      </section>
+    </div>
+  </section>
+  </main>
+
+  <dialog class="customer-photo-dialog" id="customerProfileDialog" aria-labelledby="customerProfileTitle" aria-describedby="customerProfileDescription">
+    <form id="customerProfileForm">
+      <div>
+        <h2 id="customerProfileTitle">保存为客户</h2>
+        <p id="customerProfileDescription">保存当前照片，以后可从客户列表直接选用。</p>
+      </div>
+      <label class="customer-profile-name" for="customerProfileName">客户名称
+        <input id="customerProfileName" name="displayName" required maxlength="80" autocomplete="off" autofocus>
+      </label>
+      <p id="customerProfileMessage" class="customer-photo-rename-message" role="status"></p>
+      <footer>
+        <button class="quiet-button" type="button" id="cancelCustomerProfile">取消</button>
+        <button class="primary" type="submit" id="saveCustomerProfile">保存客户</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="history-delete-dialog" id="discardRunDialog" aria-labelledby="discardRunTitle" aria-describedby="discardRunDescription">
+    <form method="dialog">
+      <h2 id="discardRunTitle">弃用本次结果？</h2>
+      <p id="discardRunDescription">本次任务及所有生成图片将永久删除，无法恢复。</p>
+      <footer>
+        <button class="secondary" value="cancel" autofocus>取消</button>
+        <button class="primary history-delete-confirm" value="discard">永久删除</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="history-delete-dialog" id="historyDeleteDialog" aria-labelledby="historyDeleteTitle" aria-describedby="historyDeleteTarget historyDeleteDescription">
+    <form method="dialog">
+      <h2 id="historyDeleteTitle">删除这条记录？</h2>
+      <p id="historyDeleteTarget"></p>
+      <p id="historyDeleteDescription">这条记录将移入「已删除」，其中的图片和评分可以随记录恢复。</p>
+      <footer>
+        <button class="quiet-button" type="submit" value="cancel" autofocus>取消</button>
+        <button class="primary history-delete-confirm" type="submit" value="delete">删除记录</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="customer-photo-context-menu" id="customerPhotoContextMenu" role="menu" aria-label="照片管理" hidden>
+    <button type="button" role="menuitem" data-customer-photo-action="rename">重命名</button>
+    <button type="button" role="menuitem" class="danger-action" data-customer-photo-action="remove">删除照片</button>
+  </div>
+
+  <dialog class="customer-photo-dialog" id="customerPhotoRenameDialog" aria-labelledby="customerPhotoRenameTitle">
+    <form id="customerPhotoRenameForm">
+      <header><div><span>PHOTO NAME</span><h2 id="customerPhotoRenameTitle">重命名照片</h2></div><button type="button" class="quiet-button" id="cancelCustomerPhotoRename" aria-label="取消重命名">取消</button></header>
+      <label class="customer-photo-name-field" for="customerPhotoRenameInput"><span>照片名称</span><div><input id="customerPhotoRenameInput" name="name" type="text" maxlength="100" autocomplete="off" required><strong id="customerPhotoRenameExtension"></strong></div><small>只修改照片名称，图片格式、内容和历史任务不会改变。</small></label>
+      <p class="customer-photo-rename-message" id="customerPhotoRenameMessage" aria-live="polite"></p>
+      <footer><button type="button" class="secondary" id="closeCustomerPhotoRename">取消</button><button type="submit" class="primary" id="saveCustomerPhotoRename">保存名称</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="media-preview-dialog" id="mediaPreviewDialog" aria-labelledby="mediaPreviewCaption">
+    <div class="media-preview-shell">
+      <header class="media-preview-header">
+        <div><strong id="mediaPreviewCaption">图片预览</strong><span id="mediaPreviewCounter">1 / 1</span></div>
+        <div class="media-preview-toolbar" role="toolbar" aria-label="图片缩放与位置">
+          <button type="button" id="previewZoomOut" aria-label="缩小图片" title="缩小图片"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg></button>
+          <button type="button" id="previewZoomReset" aria-label="适合窗口" title="适合窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg></button>
+          <button type="button" id="previewZoomIn" aria-label="放大图片" title="放大图片"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg></button>
+          <span id="previewZoomValue">100%</span><small>滚轮缩放 · 拖动移动</small>
+        </div>
+        <button class="media-preview-close" type="button" id="closeMediaPreview" aria-label="关闭预览" title="关闭预览"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+      <button class="media-preview-nav previous" type="button" id="previewPrevious" aria-label="上一张" title="上一张">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <figure class="media-preview-stage" id="mediaPreviewStage"><img id="mediaPreviewImage" alt="" draggable="false"></figure>
+      <button class="media-preview-nav next" type="button" id="previewNext" aria-label="下一张" title="下一张">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </dialog>
+
+  
+
+  <dialog class="annotation-dialog" id="annotationDialog" aria-labelledby="annotationTitle">
+    <div class="annotation-shell">
+      <header class="annotation-header">
+        <div>
+          <span class="section-kicker">Revision markup</span>
+          <h2 id="annotationTitle">候选图批注</h2>
+          <p>圈出需要修改的区域，并为每个标记写清楚问题。</p>
+        </div>
+        <div class="annotation-header-actions">
+          <span class="annotation-save-state" id="annotationSaveState">尚未修改</span>
+          <button class="quiet-button" type="button" id="closeAnnotation">关闭</button>
+        </div>
+      </header>
+
+      <div class="annotation-toolbar" role="toolbar" aria-label="图片批注工具">
+        <div class="annotation-tool-group" aria-label="标记工具">
+          <button class="annotation-tool active" type="button" data-annotation-tool="select" aria-label="选择" title="选择">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l12.3 8.2-5.4 1.2 3.1 6.1-2.9 1.5-3.1-6.2L5 18V3z"/></svg><span class="sr-only">选择</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="freehand" aria-label="画笔" title="画笔">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10.6-10.6a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L5 15.8 4 20zM13.8 7l3.2 3.2"/></svg><span class="sr-only">画笔</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="mosaic" aria-label="朦胧马赛克" title="朦胧马赛克">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8M6 8h12M5 12h14M7 16h10M9 20h6"/><path d="M4 6h1M19 18h1"/></svg><span class="sr-only">朦胧马赛克</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="rectangle" aria-label="矩形" title="矩形">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg><span class="sr-only">矩形</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="ellipse" aria-label="圆形" title="圆形">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg><span class="sr-only">圆形</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="arrow" aria-label="箭头" title="箭头">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5M10 5h9v9"/></svg><span class="sr-only">箭头</span>
+          </button>
+          <button class="annotation-tool" type="button" data-annotation-tool="text" aria-label="文字" title="文字">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M12 5v14M8 19h8"/></svg><span class="sr-only">文字</span>
+          </button>
+        </div>
+        <div class="annotation-tool-group compact-tools">
+          <div class="annotation-choice-group mosaic-variant-group" role="group" aria-label="马赛克类型">
+            <button class="mosaic-variant-choice soft active" type="button" data-mosaic-variant="soft_blur" aria-label="柔焦" title="柔焦"></button>
+            <button class="mosaic-variant-choice haze" type="button" data-mosaic-variant="haze" aria-label="雾化" title="雾化"></button>
+            <button class="mosaic-variant-choice frosted" type="button" data-mosaic-variant="frosted" aria-label="磨砂" title="磨砂"></button>
+          </div>
+          <div class="annotation-choice-group annotation-colors" role="group" aria-label="标记颜色">
+            <button class="annotation-color-swatch active" type="button" data-annotation-color="#ef4444" style="--swatch:#ef4444" aria-label="红色" title="红色"></button>
+            <button class="annotation-color-swatch" type="button" data-annotation-color="#f59e0b" style="--swatch:#f59e0b" aria-label="橙色" title="橙色"></button>
+            <button class="annotation-color-swatch" type="button" data-annotation-color="#10b981" style="--swatch:#10b981" aria-label="绿色" title="绿色"></button>
+            <button class="annotation-color-swatch" type="button" data-annotation-color="#3b82f6" style="--swatch:#3b82f6" aria-label="蓝色" title="蓝色"></button>
+            <button class="annotation-color-swatch" type="button" data-annotation-color="#8b5cf6" style="--swatch:#8b5cf6" aria-label="紫色" title="紫色"></button>
+            <button class="annotation-color-swatch" type="button" data-annotation-color="#111827" style="--swatch:#111827" aria-label="黑色" title="黑色"></button>
+            <label class="annotation-custom-color" title="自定义颜色"><span class="sr-only">自定义颜色</span><input id="annotationColor" type="color" value="#ef4444" aria-label="自定义颜色"></label>
+          </div>
+          <div class="annotation-choice-group annotation-widths" role="group" aria-label="线条粗细">
+            <input id="annotationWidth" type="hidden" value="4">
+            <button class="annotation-width-choice" type="button" data-annotation-width="2" aria-label="细线" title="细线"><span style="--sample-width:1px"></span></button>
+            <button class="annotation-width-choice active" type="button" data-annotation-width="4" aria-label="中等粗细" title="中等粗细"><span style="--sample-width:2px"></span></button>
+            <button class="annotation-width-choice" type="button" data-annotation-width="8" aria-label="粗线" title="粗线"><span style="--sample-width:4px"></span></button>
+          </div>
+          <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+          <button class="annotation-tool" type="button" id="undoAnnotation" aria-label="撤销" title="撤销"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l-4 4 4 4M5 11h8a6 6 0 0 1 6 6"/></svg><span class="sr-only">撤销</span></button>
+          <button class="annotation-tool" type="button" id="redoAnnotation" aria-label="重做" title="重做"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l4 4-4 4M19 11h-8a6 6 0 0 0-6 6"/></svg><span class="sr-only">重做</span></button>
+          <button class="annotation-tool" type="button" id="deleteAnnotation" aria-label="删除选中标记" title="删除选中标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg><span class="sr-only">删除选中标记</span></button>
+          <button class="annotation-tool danger-action" type="button" id="clearAnnotations" aria-label="清空全部标记" title="清空全部标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15l7-9 9 7-6 7H8l-4-5zM11 18l5-6"/></svg><span class="sr-only">清空全部标记</span></button>
+          <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+          <button class="annotation-tool" type="button" id="zoomOutAnnotation" aria-label="缩小" title="缩小"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg><span class="sr-only">缩小</span></button>
+          <button class="annotation-tool" type="button" id="zoomInAnnotation" aria-label="放大" title="放大"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg><span class="sr-only">放大</span></button>
+          <button class="annotation-tool" type="button" id="resetZoomAnnotation" aria-label="适合窗口" title="适合窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg><span class="sr-only">适合窗口</span></button>
+        </div>
+      </div>
+
+      <div class="annotation-workspace">
+        <section class="annotation-canvas-stage" id="annotationCanvasStage">
+          <div class="annotation-canvas-viewport" id="annotationCanvasViewport">
+            <canvas id="annotationCanvas"></canvas>
+          </div>
+        </section>
+        <aside class="annotation-inspector">
+          <div class="annotation-inspector-heading">
+            <span>Selected mark</span>
+            <strong id="annotationSelectionLabel">还没有选中标记</strong>
+          </div>
+          <label class="field"><span>问题类型</span><select id="annotationReason" disabled><option value="face">人脸</option><option value="hair">发型</option><option value="hand">手部</option><option value="clothing">服装</option><option value="pose">姿势</option><option value="background">背景</option><option value="lighting">光影</option><option value="text">文字</option><option value="other" selected>其他</option></select></label>
+          <label class="field"><span>这个区域需要怎么改</span><textarea id="annotationNote" class="short-textarea" disabled placeholder="例如：手指数量不对，保持姿势不变并修正手部结构。"></textarea></label>
+          <div class="annotation-object-hint" id="annotationObjectHint">先用画笔或形状圈出问题区域，再填写备注。</div>
+          <label class="field annotation-overall-note"><span>整体修改要求</span><textarea id="annotationOverallNote" class="short-textarea" placeholder="补充整张图片共同需要调整的内容。"></textarea></label>
+          <div class="annotation-scope-note"><strong>先保存，再决定是否发送</strong><span>保存批注仍然只写入本地。只有点击下方“在原对话继续修改”，才会上传干净原图和标记预览，并发送一次修改要求。</span><span class="annotation-revision-state" id="annotationRevisionState" aria-live="polite">保存至少一个标记后可继续修改。</span></div>
+          <div class="annotation-action-stack">
+            <button class="secondary" type="button" id="saveAnnotation">保存批注</button>
+            <button class="primary" type="button" id="submitArtifactRevision" disabled>在原对话继续修改</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+  <template id="artifactReviewTemplate">
+    <form class="artifact-review-form">
+      <div class="artifact-review-scroll">
+      <section class="ai-suggestion-panel" id="aiSuggestionPanel"><div><strong>AI 建议</strong><span data-ai-suggestion-status>未启用；人工评审仍是唯一正式结果。</span></div><button type="button" data-apply-ai-suggestion hidden>采用建议值</button></section>
+      <div class="review-form-heading"><strong>人工质量评分</strong></div>
+      <div class="primary-score-grid">
+        <label class="score-card"><span class="score-label"><strong title="本人特征还原程度">人脸一致性</strong><small>通过 ≥ 8.0</small></span><input name="faceFidelity" type="number" min="0" max="10" step="0.1" required></label>
+        <label class="score-card"><span class="score-label"><strong title="画面自然可信程度">真实自然</strong><small>通过 ≥ 7.0</small></span><input name="naturalness" type="number" min="0" max="10" step="0.1" required></label>
+        <label class="score-card"><span class="score-label"><strong title="目标模板风格符合程度">目标风格一致</strong><small>通过 ≥ 7.0</small></span><input name="style" type="number" min="0" max="10" step="0.1" required></label>
+      </div>
+      <details class="diagnostic-section">
+        <summary>结构化诊断（可多选，不增加硬门槛）</summary>
+        <div class="diagnostic-groups">
+          <fieldset class="diagnostic-group"><legend>情绪表达</legend><label><input name="diagnosticCodes" type="checkbox" value="emotion_unclear"><span>情绪不清晰</span></label><label><input name="diagnosticCodes" type="checkbox" value="expression_atmosphere_conflict"><span>表情与氛围冲突</span></label></fieldset>
+          <fieldset class="diagnostic-group"><legend>元素统一</legend><label><input name="diagnosticCodes" type="checkbox" value="elements_incoherent"><span>画面元素不统一</span></label><label><input name="diagnosticCodes" type="checkbox" value="unmotivated_props_or_effects"><span>道具或光效无动机</span></label></fieldset>
+          <fieldset class="diagnostic-group"><legend>视觉主次</legend><label><input name="diagnosticCodes" type="checkbox" value="subject_not_primary"><span>人物不是第一视觉中心</span></label><label><input name="diagnosticCodes" type="checkbox" value="competing_foreground_or_background"><span>前景或背景抢注意力</span></label></fieldset>
+          <fieldset class="diagnostic-group client-diagnostic"><legend>客户适配</legend><label><input name="diagnosticCodes" type="checkbox" value="client_use_case_mismatch"><span>与客户使用场景不匹配</span></label><label><input name="diagnosticCodes" type="checkbox" value="profession_or_identity_context_mismatch"><span>职业或身份语境不匹配</span></label><label><input name="diagnosticCodes" type="checkbox" value="client_rejected"><span>客户明确不接受</span></label></fieldset>
+        </div>
+        <p class="diagnostic-note">这些标签用于解释问题、统计重复原因和指导下一轮；只有上面的三项分数决定门禁。</p>
+        <p class="legacy-review-note" hidden>这是旧版七维记录；旧字段只读保留，保存后会追加一条新的三分制评审。</p>
+      </details>
+      <div class="field notes-field"><label>额外备注</label><textarea name="notes" class="short-textarea" placeholder="记录具体问题、满意之处或需要保留的方向。"></textarea></div>
+      </div>
+      <div class="review-actions"><button class="primary" type="submit">保存评分并看下一张</button><div class="artifact-review-message" aria-live="polite"></div></div>
+    </form>
+  </template>
+  <script type="module" src="/folio/portrait-lab/demo-start.js?v=c9e3e7397d36" data-entry="/folio/portrait-lab/app.js"></script>
+
+  <!-- Template Library Dialog -->
+  <dialog id="templateLibraryDialog" class="template-library-dialog" aria-labelledby="templateLibraryTitle">
+    <div class="template-library-shell">
+      <header class="template-library-header">
+        <div class="template-library-title-wrap">
+          <h2 id="templateLibraryTitle">全局模板库</h2>
+          <span class="template-library-count" id="templateLibraryCountBadge">124 个模板</span>
+        </div>
+        <div class="template-library-header-actions">
+          <span class="selected-counter" id="librarySelectedCount">已选 0 / 4</span>
+          <button class="primary" type="button" id="confirmLibrarySelection">完成选择</button>
+          <button class="quiet-button close-dialog-button" type="button" id="closeTemplateLibraryButton" aria-label="关闭模板库">✕</button>
+        </div>
+      </header>
+
+      <div class="template-library-controls">
+        <div class="search-box">
+          <input type="search" id="templateSearchInput" placeholder="搜索模板名称、风格或标签..." aria-label="搜索模板">
+        </div>
+        <div class="filter-group">
+          <select id="templateStyleFilter" aria-label="风格分类">
+            <option value="">所有风格</option>
+          </select>
+          <select id="templateScaleFilter" aria-label="景别">
+            <option value="">所有景别</option>
+          </select>
+          <select id="templateAngleFilter" aria-label="角度">
+            <option value="">所有角度</option>
+          </select>
+          <select id="templateRiskFilter" aria-label="保真风险">
+            <option value="">所有风险</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="template-library-body">
+        <div class="template-grid-wrap">
+          <div id="templateGrid" class="template-grid" role="listbox" aria-label="模板列表" aria-multiselectable="true"></div>
+          <div id="templateLoading" hidden><p role="status">正在加载模板…</p><div class="template-loading-preview" aria-hidden="true"><i></i><i></i><i></i></div></div>
+          <div id="templateFailed" hidden><p role="status">模板暂时未能加载</p><button type="button" class="quiet-button" id="retryTemplateLibrary">重试</button></div>
+          <div id="templateGridEmpty" class="template-grid-empty" hidden>未找到符合条件的模板</div>
+        </div>
+
+        <aside id="templateDetailDrawer" class="template-detail-drawer" hidden aria-label="模板详情">
+          <div class="drawer-header">
+            <h3 id="drawerTemplateName">模板详情</h3>
+            <button type="button" class="quiet-button" id="closeDrawerButton" aria-label="关闭详情">✕</button>
+          </div>
+          <div class="drawer-preview">
+            <img id="drawerTemplateImage" src="" alt="模板大图预览">
+          </div>
+          <div class="drawer-metadata" id="drawerMetadata"></div>
+          <div class="drawer-actions">
+            <button type="button" class="primary full-button" id="drawerSelectButton">选择此模板</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="generationSettingsDialog" class="generation-settings-dialog" aria-labelledby="generationSettingsTitle">
+    <header><h2 id="generationSettingsTitle">API 生图配置</h2><button type="button" class="quiet-button" id="closeGenerationSettings" aria-label="关闭生成设置">关闭</button></header>
+    <form id="imageApiSettingsForm">
+      <p>配置保存在当前浏览器的标签页会话中，密钥仅在当前页面有效。</p>
+      <label>API 地址<input name="baseUrl" type="url" placeholder="https://api.openai.com/v1" required></label>
+      <label>模型名称<input name="model" placeholder="服务商提供的图片模型 ID" required></label>
+      <label>API 密钥<input name="apiKey" type="password" autocomplete="new-password" placeholder="输入 API 密钥"></label>
+      <div class="brief-grid"><label>生成端点<input name="generatePath" placeholder="images/generations"></label><label>编辑端点<input name="editPath" placeholder="images/edits"></label></div>
+      <small>端点填写相对于 API 地址的路径；完整请求地址为 API 地址 + 端点。</small>
+      <details><summary>更多连接设置</summary><label>图片下载域名<input name="resultHosts" placeholder="服务商返回图片 URL 时填写，逗号分隔"></label></details>
+      <small>公开工作台尚未接通生图服务。保存配置不会发送请求。</small>
+      <button class="primary" type="submit">保存设置</button> <button class="quiet-button" type="reset">清空</button><p id="imageApiSettingsMessage" class="notice" aria-live="polite"></p>
+    </form>
+  </dialog>
+<a href="/folio/" style="position:fixed;z-index:1000;right:12px;bottom:12px;padding:7px 12px;border-radius:20px;background:#f5f5f2;color:#18202b;font:13px system-ui;text-decoration:none;border:1px solid #b7bbc3">返回选集</a></body>
+</html>

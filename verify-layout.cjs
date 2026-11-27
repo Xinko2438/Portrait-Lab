@@ -14,8 +14,27 @@ const origin = 'http://127.0.0.1:4191';
         const response = await page.goto(origin+'/folio/portrait-lab/?run=run-demo-selected&from=history');
         assert.equal(response.status(),200);
         await page.locator('#reviewWorkspace').waitFor({timeout:20000});
+        let choiceReferenceUrls;
         for (const view of ['choice','score']) {
           await page.locator('[data-review-step-target="'+view+'"]').click();
+          const references = page.locator('#reviewReferences');
+          assert.equal(await references.isVisible(), true, 'Reference strip hidden in ' + view);
+          const thumbs = references.locator('img');
+          assert.equal(await thumbs.count(), 2);
+          const referenceUrls = await thumbs.evaluateAll(async (images) => {
+            await Promise.all(images.map(image => image.decode()));
+            return images.map(image => image.currentSrc);
+          });
+          if (view === 'choice') choiceReferenceUrls = referenceUrls;
+          else assert.deepEqual(referenceUrls, choiceReferenceUrls);
+          if (viewport.width === 1706) {
+            await references.getByRole('button', {name: /身份原图/}).click();
+            const dialog = page.locator('#mediaPreviewDialog');
+            await dialog.waitFor();
+            await dialog.locator('img').evaluate(image => image.decode());
+            await page.keyboard.press('Escape');
+            await dialog.waitFor({state: 'hidden'});
+          }
           const images = page.locator(view==='choice'
             ? '#comparisonMediaStage figure > img' : '#artifactGallery .artifact-image-wrap img');
           assert.equal(await images.count(),2);
@@ -37,7 +56,7 @@ const origin = 'http://127.0.0.1:4191';
           if(process.argv.includes('--baseline') && viewport.width===1706) {
             await page.screenshot({path:'preview-'+view+'-before.png'});
           }
-          evidence.push({viewport,view,...stats});
+          evidence.push({viewport,view,visibleReferences:referenceUrls.length,...stats});
           console.log(viewport.width,view,photos.map(p=>[Math.round(p.width),Math.round(p.height)]),frames.map(b=>Math.round(b.width)));
           {
             for(let i=0;i<2;i++) {
