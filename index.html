@@ -98,9 +98,9 @@
           <aside class="task-brief" id="referenceSettings">
             <div class="task-brief-scroll">
             <div class="task-brief-heading"><h2 id="generationSettingsHeading">任务设置</h2></div>
-            <div class="field generation-mode-field"><label for="generationMode">用什么生成</label><select id="generationMode"><option value="web">ChatGPT 网页版</option><option value="api">API 生图</option></select></div>
+            <div class="field generation-mode-field"><label for="generationMode">用什么生成</label><select id="generationMode"><option value="web">ChatGPT 网页版</option><option value="api" selected>API 生图</option></select></div>
             <div class="field"><label for="userSupplement">想补充什么？（可不填）</label><textarea id="userSupplement" name="userSupplement" placeholder="例如：背景更亮、穿黑色西装。没有特殊要求可以留空。"></textarea></div>
-            <div id="apiModeOptions" class="api-quick-options" hidden>
+            <div id="apiModeOptions" class="api-quick-options">
               <div class="field"><label for="apiImageCount">生成张数</label><select id="apiImageCount"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
             </div>
             <input type="hidden" id="prompt" name="prompt" value="">
