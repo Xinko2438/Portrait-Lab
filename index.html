@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="script-src 'self'; connect-src 'self'; img-src 'self' blob: data:; form-action 'none'">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'; connect-src 'self' https:; img-src 'self' blob: data:; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self' https:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; form-action 'none'; base-uri 'none'; object-src 'none'">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Portrait Lab · AI 写真</title>
@@ -177,7 +177,7 @@
               <div class="notice compact" id="prepareResult" role="status"></div>
               <p id="creationReadiness" class="creation-readiness" aria-live="polite">先添加一张客户照片，即可继续</p>
               <button class="primary task-submit" type="submit" aria-describedby="creationReadiness prepareResult" id="prepareRun">开始生成</button>
-              <a class="primary task-submit" id="openTravelCase" href="?run=run-demo-review&amp;from=history&amp;stage=results">查看案例结果</a>
+              <a class="secondary task-submit" id="openTravelCase" href="?run=run-demo-review&amp;from=history&amp;stage=results">查看案例结果</a>
             </footer>
           </aside>
         </form>
@@ -624,13 +624,17 @@
     <header><h2 id="generationSettingsTitle">API 生图配置</h2><button type="button" class="quiet-button close-icon-button" id="closeGenerationSettings" aria-label="关闭生成设置" title="关闭生成设置"><span class="close-icon-glyph" aria-hidden="true"></span></button></header>
     <form id="imageApiSettingsForm">
       <p>配置保存在当前浏览器的标签页会话中，密钥仅在当前页面有效。</p>
-      <label>API 地址<input name="baseUrl" type="url" placeholder="https://api.openai.com/v1" required></label>
-      <label>模型名称<input name="model" placeholder="服务商提供的图片模型 ID" required></label>
+      <label>API 地址<input name="baseUrl" type="url" placeholder="填写服务商的 API 地址" required></label>
+      <label>模型名称<input name="model" value="gpt-image-2.6" spellcheck="false" required></label>
       <label>API 密钥<input name="apiKey" type="password" autocomplete="new-password" placeholder="输入 API 密钥"></label>
-      <div class="brief-grid"><label>生成端点<input name="generatePath" placeholder="images/generations"></label><label>编辑端点<input name="editPath" placeholder="images/edits"></label></div>
-      <small>端点填写相对于 API 地址的路径；完整请求地址为 API 地址 + 端点。</small>
-      <details><summary>更多连接设置</summary><label>图片下载域名<input name="resultHosts" placeholder="服务商返回图片 URL 时填写，逗号分隔"></label></details>
-      <small>公开工作台尚未接通生图服务。保存配置不会发送请求。</small>
+      <div class="brief-grid"><label>生成端点<input name="generatePath" value="images/generations" spellcheck="false"></label><label>编辑端点<input name="editPath" value="images/edits" spellcheck="false"></label></div>
+      <small>请求地址由 API 地址和端点拼接。</small>
+      <details>
+        <summary>更多连接设置</summary>
+        <label>图片下载域名（可选）<input name="resultHosts" aria-describedby="resultHostsHelp" spellcheck="false"></label>
+        <small id="resultHostsHelp">服务商返回图片链接时，填写链接的域名，如 cdn.example.com。多个域名用逗号分隔。直接返回图片数据时留空。</small>
+      </details>
+      <small>点击「开始生成」后，所选图片会发送给你配置的服务商。</small>
       <button class="primary" type="submit">保存设置</button> <button class="quiet-button" type="reset">清空</button><p id="imageApiSettingsMessage" class="notice" aria-live="polite"></p>
     </form>
   </dialog>

@@ -5,11 +5,13 @@ const preview = process.argv[2] ? resolve(process.argv[2]) : join(__dirname, 'si
 function revision(name) {
   return createHash('sha256').update(readFileSync(join(preview, name))).digest('hex').slice(0, 12);
 }
-for (const name of ['app.css', 'app.js', 'demo-worker.js', 'history-workspace.js', 'work-library-state.js', 'annotation-editor.js', 'review-workspace-state.js']) copyFileSync(join(__dirname, name), join(preview, name));
+for (const name of ['app.css', 'app.js', 'demo-worker.js', 'generation-mode.js', 'history-workspace.js', 'work-library-state.js', 'annotation-editor.js', 'review-workspace-state.js']) copyFileSync(join(__dirname, name), join(preview, name));
 const appPath = join(preview, 'app.js');
 const app = readFileSync(appPath, 'utf8');
 if (!app.includes("import('./annotation-editor.js')")) throw new Error('Unexpected annotation editor entry point');
-writeFileSync(appPath, app.replace("import('./annotation-editor.js')", "import('./annotation-editor.js?v=" + revision('annotation-editor.js') + "')"));
+writeFileSync(appPath, app
+  .replace("import('./annotation-editor.js')", "import('./annotation-editor.js?v=" + revision('annotation-editor.js') + "')")
+  .replace(/(from '\.\/generation-mode\.js\?v=)[a-f0-9]{12}/, (_, prefix) => prefix + revision('generation-mode.js')));
 const startPath = join(preview, 'demo-start.js');
 const start = readFileSync(startPath, 'utf8')
   .replace(/(demo-worker\.js\?v=)[a-f0-9]{12}/, (_, prefix) => prefix + revision('demo-worker.js'))

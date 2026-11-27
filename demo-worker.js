@@ -95,21 +95,30 @@ async function stateAction(request, url) {
   return result;
 }
 
-async function importHistory(request, state, cache, createdFiles) {
+async function importHistory(request, state, cache, createdFiles, fromGeneration = false) {
   const form = await request.formData();
   const name = String(form.get('customerName') || '').trim();
   const prompt = String(form.get('prompt') || '').trim();
   const groups = [['identity', 'identity'], ['template', 'templates'], ['result', 'results']]
     .map(([role, field]) => [role, form.getAll(field)]);
   const allowed = ['image/png', 'image/jpeg', 'image/webp'];
-  if (!name || !prompt || groups.some(([, files]) => !files.length || files.length > 4 ||
+  const operation = form.get('operation');
+  const textOnly = fromGeneration && operation === 'generate';
+  const requestId = form.get('archiveId');
+  if ((fromGeneration && (!['generate', 'edit'].includes(operation) ||
+      !/^[0-9a-f-]{36}$/.test(requestId || ''))) ||
+      !name || !prompt || groups.some(([role, files]) => (!files.length && (!textOnly || role === 'result')) || files.length > 4 ||
      files.some(file => !allowed.includes(file.type) || !file.size || file.size > 10 * 1024 * 1024))) {
     return failure('填写客户名称和提示词，每组选择 1–4 张图片，每张不超过 10 MB。');
   }
-  const id = 'run-archive-' + crypto.randomUUID();
+  const id = 'run-archive-' + (fromGeneration ? requestId : crypto.randomUUID());
+  const existing = fromGeneration && state.runs.find(run => run.run_id === id);
+  if (existing) return Response.json(runData(existing));
   const run = makeRun(id, undefined, name);
   run.local_archive = true;
-  run.image_api = null;
+  run.image_api = fromGeneration
+    ? { operation, n: groups[2][1].length, size: form.get('size'), quality: form.get('quality') }
+    : null;
   run.prompt = prompt;
   run.history_import = { batch_label: String(form.get('batchLabel') || '').trim() };
   const stored = [];
@@ -321,6 +330,7 @@ async function handle(request, url, state, cache, createdFiles, removedFiles) {
   }
 
   if (pathname === '/api/history/import' && method === 'POST') return importHistory(request, state, cache, createdFiles);
+  if (pathname === '/api/generated-results' && method === 'POST') return importHistory(request, state, cache, createdFiles, true);
   if (resource === 'runs' && method === 'GET' && !id) {
     const deleted = url.searchParams.get('history') === 'deleted';
     const artifactsOnly = url.searchParams.get('artifactsOnly') === 'true';

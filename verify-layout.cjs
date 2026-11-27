@@ -232,11 +232,225 @@ async function verifySliderReview(){
  }finally{await browser.close()}
 }
 
+async function verifyGenerationSettings(page) {
+  const dialog = page.getByRole('dialog', {name:'API 生图配置'});
+  const field = name => dialog.locator('[name="'+name+'"]');
+  const open = () => page.locator('#openGenerationSettings').click();
+  await page.goto(base);
+  await open();
+  for (const [name, value] of Object.entries({
+    model:'gpt-image-2.6', generatePath:'images/generations', editPath:'images/edits', baseUrl:'', apiKey:'', resultHosts:''
+  })) {
+    assert.equal(await field(name).inputValue(),value,'Unexpected initial value for '+name);
+  }
+  await field('baseUrl').fill('https://api.example.invalid/v1');
+  await field('model').fill('custom-image-model');
+  await field('generatePath').fill('');
+  await field('editPath').fill('');
+  await field('apiKey').fill('test-not-a-real-key');
+  await dialog.getByRole('button',{name:'保存设置'}).click();
+  await dialog.getByText('已在此标签页保存配置。').waitFor();
+  const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('portrait-lab.api-settings')));
+  assert.equal(saved.model,'custom-image-model');
+  assert.ok(!('apiKey' in saved));
+  await page.reload();
+  await open();
+  assert.equal(await field('model').inputValue(),'custom-image-model');
+  assert.equal(await field('generatePath').inputValue(),'images/generations');
+  assert.equal(await field('editPath').inputValue(),'images/edits');
+  assert.equal(await field('apiKey').inputValue(),'');
+  await dialog.getByRole('button',{name:'清空'}).click();
+  assert.equal(await field('baseUrl').inputValue(),'');
+  assert.equal(await field('model').inputValue(),'gpt-image-2.6');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('portrait-lab.api-settings')),null);
+}
+
+async function verifyBrowserGeneration(page) {
+  const provider = 'https://images.test.invalid/v1/images/edits';
+  const imageUrl = 'https://cdn.test.invalid/result.png';
+  const response = await page.goto(base);
+  assert.equal(response.status(),200);
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 24;
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  let calls = 0;
+  let downloads = 0;
+  await page.context().route(imageUrl, async route => {
+    downloads++;
+    assert.equal(route.request().headers().authorization,undefined);
+    await route.fulfill({contentType:'image/png',body:Buffer.from(image,'base64'),headers:{'access-control-allow-origin':'*'}});
+  });
+  await page.context().route(url => url.href === provider, async route => {
+    const request = route.request();
+    const headers = {'access-control-allow-origin':'*','access-control-allow-methods':'POST','access-control-allow-headers':'authorization,content-type'};
+    if (request.method()==='OPTIONS') return route.fulfill({status:204,headers});
+    calls++;
+    assert.equal(request.method(),'POST');
+    assert.equal(request.headers().authorization,'Bearer local-test-key');
+    const body = request.postDataBuffer().toString('latin1');
+    assert.match(body,/name="model"\r\n\r\ngpt-image-2\.6/);
+    assert.match(body,/name="n"\r\n\r\n2/);
+    assert.match(body,/name="image\[\]"; filename="identity.png"/);
+    assert.match(body,/name="image\[\]"; filename="template.png"/);
+    await route.fulfill({json:{data:[{b64_json:image},{url:imageUrl}]},headers});
+  });
+  await page.locator('#openGenerationSettings').click();
+  const dialog = page.getByRole('dialog',{name:'API 生图配置'});
+  await dialog.locator('[name="baseUrl"]').fill('https://images.test.invalid/v1');
+  await dialog.locator('[name="apiKey"]').fill('local-test-key');
+  await dialog.getByText('更多连接设置',{exact:true}).click();
+  await dialog.locator('[name="resultHosts"]').fill('cdn.test.invalid');
+  await dialog.getByRole('button',{name:'保存设置'}).click();
+  await dialog.getByText('已在此标签页保存配置。').waitFor();
+  await dialog.getByRole('button',{name:'关闭生成设置'}).click();
+  for(const name of ['identity','templates']) {
+    await page.locator('#'+name).setInputFiles({name:name==='identity'?'identity.png':'template.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')});
+  }
+  await page.locator('#apiImageCount').selectOption('2');
+  await page.evaluate(() => {
+    const nativeFetch = window.fetch;
+    let firstSave = true;
+    window.fetch = (url,options) => {
+      if (String(url).endsWith('/api/generated-results') && firstSave) {
+        firstSave = false;
+        return Promise.resolve(Response.json({error:'local test error'},{status:503}));
+      }
+      return nativeFetch(url,options);
+    };
+  });
+  const submit = page.locator('#prepareRun');
+  assert.ok(await submit.isVisible(),'The public form must have a reachable generation action');
+  assert.equal(calls,0);
+  await submit.click();
+  await page.waitForFunction(() => document.querySelector('#prepareResult').textContent.includes('可再次点击保存成片'));
+  assert.equal(calls,1);
+  assert.equal(downloads,1);
+  await submit.click();
+  try { await page.getByRole('slider').first().waitFor({timeout:10000}); }
+  catch (error) { throw new Error(`Review did not open, provider calls: ${calls}, notice: ${await page.locator('#prepareResult').textContent()}`,{cause:error}); }
+  assert.equal(calls,1);
+  assert.equal(await page.locator('#artifactGallery img').count(),2);
+  assert.ok(await page.locator('#artifactGallery img').first().evaluate(async img => { await img.decode(); return img.naturalWidth===24; }));
+  await page.reload();
+  await page.getByRole('slider').first().waitFor();
+  assert.equal(calls,1,'Reload must never resubmit a generation request');
+  assert.ok(await page.locator('#artifactGallery img').first().evaluate(async img => { await img.decode(); return img.naturalHeight===24; }));
+  assert.ok(!(await page.evaluate(() => sessionStorage.getItem('portrait-lab.api-settings'))).includes('local-test-key'));
+
+  let textCalls = 0;
+  await page.context().route('https://images.test.invalid/v1/images/generations', async route => {
+    const headers = {'access-control-allow-origin':'*','access-control-allow-methods':'POST','access-control-allow-headers':'authorization,content-type'};
+    if (route.request().method()==='OPTIONS') return route.fulfill({status:204,headers});
+    const body = route.request().postDataJSON();
+    assert.match(body.prompt,/blue skyline/);
+    assert.equal(body.model,'gpt-image-2.6');
+    assert.deepEqual(Object.keys(body).sort(),['model','n','prompt','quality','size']);
+    textCalls++;
+    await route.fulfill({json:{data:[{b64_json:image}]},headers});
+  });
+  await page.locator('#newTaskButton').click();
+  await page.locator('#openTaskOptions').click();
+  await page.locator('#apiOperation').selectOption('generate');
+  await page.keyboard.press('Escape');
+  await page.locator('#userSupplement').fill('blue skyline');
+  await page.locator('#openGenerationSettings').click();
+  await dialog.locator('[name="apiKey"]').fill('local-test-key');
+  await dialog.getByRole('button',{name:'保存设置'}).click();
+  await dialog.getByRole('button',{name:'关闭生成设置'}).click();
+  await submit.click();
+  await page.getByRole('slider').first().waitFor({timeout:10000});
+  assert.equal(textCalls,1);
+  assert.equal(calls,1);
+}
+
+async function verifyGenerationErrors(page) {
+  const provider = 'https://images.test.invalid/v1/images/generations';
+  const blockedProvider = 'https://sub.200204.asia/v1/images/generations';
+  const sensitiveText = 'provider-detail-must-not-appear';
+  const headers = {'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'POST'};
+  let status;
+  let responseBody;
+  let attempts = 0;
+  await page.context().route(provider, async route => {
+    if (route.request().method()==='OPTIONS') return route.fulfill({status:204,headers});
+    attempts++;
+    if (status === 0) return route.abort('failed');
+    await route.fulfill({status,body:responseBody,headers:{...headers,'content-type':'application/json'}});
+  });
+  await page.context().route(blockedProvider, async route => {
+    if (route.request().method()==='OPTIONS') return route.fulfill({status:403});
+    await route.abort('failed');
+  });
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  const dialog = page.getByRole('dialog',{name:'API 生图配置'});
+  const configure = async address => {
+    await page.locator('#openGenerationSettings').click();
+    await dialog.locator('[name="baseUrl"]').fill(address);
+    await dialog.locator('[name="apiKey"]').fill('local-error-test-key');
+    await dialog.getByRole('button',{name:'保存设置'}).click();
+    await dialog.getByText('已在此标签页保存配置。').waitFor();
+    await dialog.getByRole('button',{name:'关闭生成设置'}).click();
+  };
+  await configure('https://images.test.invalid/v1');
+  await page.locator('#openTaskOptions').click();
+  await page.locator('#apiOperation').selectOption('generate');
+  await page.keyboard.press('Escape');
+  await page.locator('#userSupplement').fill('Test image');
+  const submit = page.locator('#prepareRun');
+  const notice = page.locator('#prepareResult[role="status"]');
+  const scenarios = [
+    [401, '核对 API 密钥'],
+    [403, '模型调用权限'],
+    [404, '核对 API 地址和生成端点路径'],
+    [429, '额度或请求频率'],
+    [503, '服务商暂时不可用'],
+    [0, '跨域或网络'],
+    [200, '成片返回格式不兼容', '<html>' + sensitiveText + '</html>'],
+    [200, '请在「图片下载域名」中加入 cdn.test.invalid', JSON.stringify({data:[{url:'https://cdn.test.invalid/result.png?private=hidden'}]})],
+  ];
+  for (const [code,hint,body] of scenarios) {
+    status = code;
+    responseBody = body ?? JSON.stringify({error:{message:sensitiveText}});
+    await submit.click();
+    await page.locator('#prepareResult[data-state="error"]').waitFor({timeout:10000});
+    assert.ok(await notice.isVisible());
+    const message = await notice.textContent();
+    assert.ok(message.includes(hint),`Expected "${hint}" for ${code}, got "${message}"`);
+    assert.ok(!message.includes(sensitiveText) && !message.includes('private=hidden'));
+    assert.ok(await submit.isEnabled());
+  }
+  assert.equal(attempts,scenarios.length);
+  await configure('https://sub.200204.asia/v1');
+  await submit.click();
+  await page.locator('#prepareResult[data-state="error"]').waitFor({timeout:10000});
+  assert.match(await notice.textContent(),/三千.*跨域/);
+}
+
 (async()=>{
   if (process.argv.includes('--score-flow')) { await verifySliderReview(); return; }
   const browser=await chromium.launch(browserOptions);
   const evidence=[];
   try {
+    if (process.argv.includes('--generation')) {
+      const page = await browser.newPage({viewport:{width:1440,height:930}});
+      await verifyBrowserGeneration(page);
+      console.log('Browser image generation and local review persistence passed');
+      return;
+    }
+    if (process.argv.includes('--generation-errors')) {
+      const page = await browser.newPage({viewport:{width:1440,height:930}});
+      await verifyGenerationErrors(page);
+      console.log('Provider errors are shown safely in the creation form');
+      return;
+    }
+    if (process.argv.includes('--settings')) {
+      const page = await browser.newPage({viewport:{width:1440,height:930}});
+      await verifyGenerationSettings(page);
+      console.log('Generation defaults, saved overrides and reset passed');
+      return;
+    }
     for(const viewport of [{width:1706,height:932},{width:1366,height:768},{width:390,height:844}]){
       const page=await browser.newPage({viewport,deviceScaleFactor:viewport.width===1706?1.5:1});
       try {

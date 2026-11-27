@@ -3505,7 +3505,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
     elements.identityInput.focus();
     return;
   }
-  if(smartTaskWorkflow&&smartEditingEnabled()){
+  if(!generationMode?.usesApi()&&smartTaskWorkflow&&smartEditingEnabled()){
     primaryActionBusy=true;setBusy(document.querySelector('#prepareRun'),true,'正在核对参考图');
     try{const choice=templateChoiceRevision;if(runHydration)await runHydration;if(customerPoolLoading)await customerPoolLoading;await Promise.all([...pendingTemplateChoices]);if(choice!==templateChoiceRevision)throw new Error('模板选择已更新，请核对后再点击发送。');await smartTaskWorkflow.prepare();if(choice!==templateChoiceRevision)throw new Error('模板选择已更新，请核对后再点击发送。');if(currentRunId){await repairCurrentSmartRun();}}
     catch(error){setPrimaryNotice(error.message);primaryActionBusy=false;setBusy(document.querySelector('#prepareRun'),false);return;}
@@ -4174,26 +4174,45 @@ generationMode=initGenerationMode({
   },
   showMessage:(message,tone)=>{setPrimaryNotice(message,tone);elements.resultMessage.textContent=message;},
   buildForm:async operation=>{
-    const form=new FormData(document.querySelector('#runForm'));
-    applyCustomerContext(form);
-    if(operation==='edit'){
-      if (templateLibraryController.getSelectedCount() || referenceFileState.templates.length) await previewFoundationPrompt();
-      await prepareFaceAngleSubmission(form);
-      const selected=templateLibraryController.getSelectedTemplates();
-      if(selected.length){await persistCatalogSelectionDecision();form.set('templateSelectionId',recommendationController.getSelectionId());form.set('templateDecisionIdempotencyKey',recommendationController.getDecisionIdempotencyKey());for(const item of selected)form.append('catalogTemplateUids',item.uid);}
-    }else{
-      for(const key of ['identity','templates','identitySetId','identityReferenceOrdinals','primaryIdentityReferenceOrdinal'])form.delete(key);
+    const draft = new FormData(document.querySelector('#runForm'));
+    const supplement = String(draft.get('userSupplement') || '').trim();
+    const form = new FormData();
+    form.set('customerName',smartCustomer().name);
+    if (operation === 'generate') {
+      if (!supplement) throw new Error('请在补充要求里写明想生成的内容');
+      form.set('prompt',apiPromptFromForm(draft));
+      return form;
     }
-    const selectedCustomer=foundationCustomers.find(c=>c.customer_id===String(form.get('customerId')||''));
-    if(selectedCustomer)form.set('customerName',selectedCustomer.display_name);
-    const supplement=String(form.get('userSupplement')||'').trim();
-    if(operation==='generate'&&!supplement)throw new Error('请在补充要求里写明想生成的内容');
-    form.set('prompt',apiPromptFromForm(form));applyReuseToForm(form);if(operation==='edit')applySmartSubmission(form);return form;
+    const pool = customerPhotoPoolState;
+    const templateSelection = templateLibraryController.getSelectedTemplates();
+    const loadReference = async (url, name) => {
+      const source = new URL(url, location.href);
+      if (source.origin !== location.origin) throw new Error('无法读取选中的参考图');
+      const response = await fetch(source);
+      if (!response.ok) throw new Error('无法读取选中的参考图');
+      const blob = await response.blob();
+      return new File([blob],name,{type:blob.type});
+    };
+    const primaryIndex = normalizeManualPrimaryIndex(manualPrimaryIdentityIndex,referenceFileState.identity.length) ?? 0;
+    const identity = pool.identitySetId ? await Promise.all(orderedCustomerPhotoOrdinals(pool).map(ordinal =>
+      loadReference(customerPhotoReferenceUrl({customerId:pool.customerId,identitySetId:pool.identitySetId,ordinal}), 'identity-'+ordinal)))
+      : reorderManualPrimary(referenceFileState.identity,primaryIndex);
+    const templates = [...referenceFileState.templates, ...await Promise.all(templateSelection.map(template =>
+      loadReference(template.image_url,template.name || 'template')))];
+    if (!identity.length || !templates.length) throw new Error('请至少选择一张客户照片和一张模板图');
+    for (const file of identity) form.append('identity',file);
+    for (const file of templates) form.append('templates',file);
+    form.set('prompt',[
+      `生成一张人物写真。前 ${identity.length} 张图为身份参考，第一张为主身份图。保留人物身份和可辨识特征。`,
+      '其余图片为版式、构图和风格参考。使用身份图中的人物，遵循下面的任务要求。',
+      apiPromptFromForm(draft),
+    ].join('\n'));
+    return form;
   },
   acceptResult:async result=>{
     currentRunId=result.runId;currentRunOpenedFromHistory=false;
     history.replaceState(null,'',`?run=${encodeURIComponent(currentRunId)}`);
-    await refreshRun();setStage('results');
+    await refreshRun();setStage('review');
   },
 });
 function applyReuseToForm(form){
