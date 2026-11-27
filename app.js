@@ -157,17 +157,10 @@ const elements = {
   aestheticComparisonPanel: document.querySelector('#aestheticComparisonPanel'),
   aestheticComparisonForm: document.querySelector('#aestheticComparisonForm'),
   aestheticComparisonMessage: document.querySelector('#aestheticComparisonMessage'),
-  comparisonUnavailable: document.querySelector('#comparisonUnavailable'),
   comparisonArtifactA: document.querySelector('#comparisonArtifactA'),
   comparisonArtifactB: document.querySelector('#comparisonArtifactB'),
-  comparisonPreviewA: document.querySelector('#comparisonPreviewA'),
-  comparisonPreviewB: document.querySelector('#comparisonPreviewB'),
-  comparisonPreviewALabel: document.querySelector('#comparisonPreviewALabel'),
-  comparisonPreviewBLabel: document.querySelector('#comparisonPreviewBLabel'),
   preferencePanel: document.querySelector('#preferencePanel'),
   preferenceForm: document.querySelector('#preferenceForm'),
-  winnerArtifactId: document.querySelector('#winnerArtifactId'),
-  winnerField: document.querySelector('#winnerField'),
   newTaskButton: document.querySelector('#newTaskButton'),
   openHistory: document.querySelector('#openHistory'),
   historyPage: document.querySelector('#historyPage'),
@@ -318,6 +311,9 @@ let historyRecordNavigationSequence = 0;
 let historyReturnRecordId = null;
 let inspectorDirty = false;
 let activeReviewViewOverride = '';
+let deliveryDraft = null;
+let savingDelivery = false;
+let comparingPhotos = false;
 let pendingReviewMessage = '';
 const referenceFileState = { identity: [], templates: [] };
 const referencePreviewUrls = { identity: [], templates: [] };
@@ -1846,7 +1842,9 @@ function renderReviewWorkspaceStep(manifest) {
   const navigationState = deriveReviewNavigationState(manifest);
   const activeView = resolveReviewNavigationView(manifest, activeReviewViewOverride);
   const showComparison = activeView === 'choice' && navigationState.choiceSections.includes('comparison');
-  const mediaMode = showComparison ? 'comparison' : 'gallery';
+  const mediaMode = activeView === 'choice' && elements.comparisonArtifactA.value ? 'comparison' : 'gallery';
+  document.querySelector('#reviewWorkspace').dataset.view = activeView;
+  document.querySelector('#photoChoiceBar').hidden = activeView !== 'choice';
   for (const button of elements.reviewStepButtons) {
     const target = button.dataset.reviewStepTarget;
     const available = navigationState.navigableViews.includes(target);
@@ -1861,94 +1859,113 @@ function renderReviewWorkspaceStep(manifest) {
   elements.preferencePanel.hidden = activeView !== 'choice';
 }
 
-function renderComparisonPreview(image, label, artifact, prefix) {
-  if (!artifact) {
-    image.removeAttribute('src');
-    image.hidden = true;
-    label.textContent = prefix;
-    return;
-  }
-  image.src = reviewArtifactFileUrl(currentRunId, artifact.artifact_id);
-  image.alt = `${prefix}：候选 ${artifact.ordinal}`;
-  image.hidden = false;
-  label.textContent = `${prefix} · 候选 ${artifact.ordinal}`;
+function currentPair() {
+  return [elements.comparisonArtifactA.value, elements.comparisonArtifactB.value];
 }
 
-function renderComparisonPreviews(manifest, artifactAId = elements.comparisonArtifactA.value, artifactBId = elements.comparisonArtifactB.value) {
-  const artifacts = manifest.artifacts || [];
-  renderComparisonPreview(
-    elements.comparisonPreviewA,
-    elements.comparisonPreviewALabel,
-    artifacts.find((artifact) => artifact.artifact_id === artifactAId),
-    '候选 A',
-  );
-  renderComparisonPreview(
-    elements.comparisonPreviewB,
-    elements.comparisonPreviewBLabel,
-    artifacts.find((artifact) => artifact.artifact_id === artifactBId),
-    '候选 B',
-  );
+function photoDesignation(id) {
+  const index = currentPair().indexOf(id);
+  if (index >= 0 && id) return index === 0 ? 'A' : 'B';
+  const artifact = currentManifest?.artifacts.find(item => item.artifact_id === id);
+  return artifact ? '候选 ' + artifact.ordinal : '';
+}
+
+function deliverySelection(manifest) {
+  const saved = manifest.preference;
+  if (deliveryDraft?.run !== currentRunId ||
+      (deliveryDraft?.decision === 'winner' && !manifest.artifact_reviews?.[deliveryDraft.id]?.preference_eligible)) {
+    deliveryDraft = null;
+  }
+  return deliveryDraft || {
+    decision: saved?.decision || '',
+    id: saved?.winner_artifact_id || '',
+    notes: saved?.notes || '',
+  };
+}
+
+function draftDecision(decision, id = '') {
+  deliveryDraft = {run: currentRunId, decision, id, notes: elements.preferenceForm.elements.notes.value};
+  renderPreference(currentManifest);
+}
+
+function renderComparisonPreviews(manifest) {
+  const [a, b] = currentPair();
+  elements.comparisonMediaStage.classList.toggle('single-choice', Boolean(a && !b));
+  for (const [index, card] of Array.from(elements.comparisonMediaStage.querySelectorAll('figure')).entries()) {
+    const id = index === 0 ? a : b;
+    const artifact = manifest.artifacts.find(item => item.artifact_id === id);
+    card.hidden = !artifact;
+    if (!artifact) continue;
+    const letter = index === 0 ? 'A' : 'B';
+    const caption = letter + ' · 候选 ' + artifact.ordinal;
+    const image = card.querySelector('img');
+    image.src = reviewArtifactFileUrl(currentRunId, id);
+    image.alt = caption;
+    card.querySelector('strong').textContent = caption;
+    card.querySelector('[data-enlarge]').setAttribute('aria-label', '放大' + caption);
+    card.querySelector('[data-comparison-outcome]').hidden = !b;
+  }
+  const history = manifest.aesthetic_comparisons || [];
+  const last = [...history].reverse().find(entry =>
+    (entry.artifact_a_id === a && entry.artifact_b_id === b) ||
+    (entry.artifact_a_id === b && entry.artifact_b_id === a));
+  let outcome = last?.outcome;
+  if (last && last.artifact_a_id !== a && (outcome === 'a' || outcome === 'b')) {
+    outcome = outcome === 'a' ? 'b' : 'a';
+  }
+  const messages = {a:'更喜欢 A', b:'更喜欢 B', tie:'两张差不多', skip:'已跳过比较'};
+  elements.aestheticComparisonMessage.textContent = messages[outcome] || '尚未记录偏好';
+  for (const button of document.querySelectorAll('[data-comparison-outcome]')) {
+    button.disabled = !a || !b || comparingPhotos || savingDelivery;
+    button.setAttribute('aria-pressed', String(button.dataset.comparisonOutcome === outcome));
+  }
 }
 
 function renderAestheticComparison(manifest) {
-  const reviews = manifest.artifact_reviews || {};
-  const previousA = elements.comparisonArtifactA.value;
-  const previousB = elements.comparisonArtifactB.value;
-  const workspaceState = deriveReviewWorkspaceState(manifest, { preferredA: previousA, preferredB: previousB });
-  const { eligible, artifactAId, artifactBId, enabled } = workspaceState.comparison;
-  const optionMarkup = eligible.length
-    ? eligible.map((artifact) => {
-      const issueCount = diagnosticCodesForDisplay(reviews[artifact.artifact_id]).size;
-      const context = issueCount ? ` · ${issueCount} 个诊断` : '';
-      return `<option value="${escapeHtml(artifact.artifact_id)}">候选 ${artifact.ordinal}${context}</option>`;
-    }).join('')
-    : '<option value="">没有通过三项门槛的候选</option>';
-  elements.comparisonArtifactA.innerHTML = optionMarkup;
-  elements.comparisonArtifactB.innerHTML = optionMarkup;
-  elements.comparisonArtifactA.value = artifactAId;
-  elements.comparisonArtifactB.value = artifactBId;
-  elements.comparisonUnavailable.hidden = enabled;
-  elements.aestheticComparisonForm.hidden = !enabled;
-  elements.comparisonArtifactA.disabled = !enabled;
-  elements.comparisonArtifactB.disabled = !enabled;
-  for (const button of elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')) button.disabled = !enabled;
-  elements.aestheticComparisonForm.elements.notes.disabled = !enabled;
-  elements.aestheticComparisonMessage.textContent = workspaceState.comparison.message;
-  elements.comparisonUnavailable.querySelector('span').textContent = workspaceState.comparison.message;
-  renderComparisonPreviews(manifest, artifactAId, artifactBId);
+  const comparison = deriveReviewWorkspaceState(manifest, {
+    preferredA: elements.comparisonArtifactA.value, preferredB: elements.comparisonArtifactB.value,
+  }).comparison;
+  const options = comparison.eligible.map(item =>
+    `<option value="${escapeHtml(item.artifact_id)}">候选 ${item.ordinal}</option>`).join('');
+  for (const [select, id] of [[elements.comparisonArtifactA, comparison.artifactAId], [elements.comparisonArtifactB, comparison.artifactBId]]) {
+    select.innerHTML = options;
+    select.value = id;
+    select.disabled = !comparison.enabled || comparingPhotos;
+  }
+  document.querySelector('#pairSettings').hidden = comparison.eligible.length <= 2;
+  renderComparisonPreviews(manifest);
 }
 
 function renderPreference(manifest) {
-  const artifacts = manifest.artifacts || [];
-  const reviews = manifest.artifact_reviews || {};
-  const eligible = artifacts.filter((artifact) => reviews[artifact.artifact_id]?.preference_eligible === true);
-  const allReviewed = artifacts.length > 0 && artifacts.every((artifact) => reviews[artifact.artifact_id]);
-  const current = manifest.preference || { decision: 'pending', winner_artifact_id: null, notes: '' };
-  const winnerRadio = elements.preferenceForm.querySelector('input[value="winner"]');
-  const noneRadio = elements.preferenceForm.querySelector('input[value="none"]');
-  winnerRadio.disabled = !allReviewed || !eligible.length;
-  noneRadio.disabled = !allReviewed;
-  elements.winnerArtifactId.disabled = !allReviewed || !eligible.length;
-  elements.winnerArtifactId.innerHTML = eligible.length
-    ? `<option value="">请选择</option>${eligible.map((artifact) => `<option value="${escapeHtml(artifact.artifact_id)}">候选 ${artifact.ordinal}</option>`).join('')}`
-    : '<option value="">没有通过全部门槛的候选</option>';
-  const decision = ['winner', 'none', 'pending'].includes(current.decision) ? current.decision : 'pending';
-  const radio = elements.preferenceForm.querySelector(`input[name="decision"][value="${decision}"]`);
-  if (radio && !radio.disabled) radio.checked = true;
-  else elements.preferenceForm.querySelector('input[value="pending"]').checked = true;
-  elements.winnerArtifactId.value = current.winner_artifact_id || '';
-  elements.preferenceForm.elements.notes.value = current.notes || '';
-  const selectedDecision = elements.preferenceForm.querySelector('input[name="decision"]:checked')?.value || 'pending';
-  elements.winnerField.hidden = selectedDecision !== 'winner';
-  const winnerOrdinal = artifacts.find((item) => item.artifact_id === current.winner_artifact_id)?.ordinal;
-  const messages = {
-    winner: `最好看：候选 ${winnerOrdinal || ''}`,
-    none: '本次全部不要',
-    pending: '暂不决定',
-  };
-  elements.preferenceMessage.textContent = manifest.preference
-    ? messages[current.decision]
-    : allReviewed ? '评分已完成，等待选择' : '尚未记录';
+  const {decision,id,notes} = deliverySelection(manifest);
+  const saved = manifest.preference;
+  const unchanged = saved && decision === saved.decision && id === (saved.winner_artifact_id || '') && notes === (saved.notes || '');
+  const complete = manifest.artifacts.length > 0 && manifest.artifacts.every(item => manifest.artifact_reviews?.[item.artifact_id]);
+  const designation = photoDesignation(id);
+  const label = decision === 'winner' ? designation : decision === 'none' ? '全部不要' : '暂不决定';
+  for (const button of elements.comparisonMediaStage.querySelectorAll('[data-pick-photo]')) {
+    const photo = currentPair()[button.dataset.pickPhoto === 'a' ? 0 : 1];
+    const chosen = Boolean(photo && decision === 'winner' && photo === id);
+    button.disabled = savingDelivery || !complete || !manifest.artifact_reviews?.[photo]?.preference_eligible;
+    button.setAttribute('aria-pressed', String(chosen));
+    button.textContent = chosen ? '✓ 已选为成片' : '选为成片';
+    if (photo) button.setAttribute('aria-label', photoDesignation(photo) + ' · ' + button.textContent.replace('✓ ', ''));
+    button.closest('figure').classList.toggle('picked', chosen);
+  }
+  const other = document.querySelector('#otherDelivery');
+  other.value = ['none', 'pending'].includes(decision) ? decision : '';
+  other.disabled = savingDelivery;
+  for (const action of document.querySelectorAll('[data-comparison-outcome]')) {
+    action.disabled = savingDelivery || comparingPhotos || !currentPair()[1];
+  }
+  const submit = document.querySelector('#savePreference');
+  submit.disabled = savingDelivery || comparingPhotos || unchanged || !decision || (decision !== 'pending' && !complete);
+  submit.textContent = savingDelivery ? '正在保存…' : unchanged ? '已保存' :
+    decision === 'winner' ? '确认交付 ' + label : decision === 'none' ? '确认全部不要' : decision === 'pending' ? '保存为暂不决定' : '确认交付';
+  elements.preferenceMessage.textContent = decision === 'winner'
+    ? (unchanged ? '已交付 ' : '待交付 ') + label
+    : decision ? label : currentPair()[0] ? '请选择一张成片' : '暂无合格的交付候选';
+  if (elements.preferenceForm.elements.notes.value !== notes) elements.preferenceForm.elements.notes.value = notes;
 }
 
 function setPrimaryNotice(message,state='error'){
@@ -2144,8 +2161,7 @@ function reviewPayload(form) {
 async function saveAestheticComparison(outcome) {
   if (!currentRunId) return;
   const data = new FormData(elements.aestheticComparisonForm);
-  const artifactAId = String(data.get('artifactAId') || '');
-  const artifactBId = String(data.get('artifactBId') || '');
+  const [artifactAId,artifactBId] = currentPair();
   if (!artifactAId || !artifactBId) throw new Error('请先选择两张合格候选');
   if (artifactAId === artifactBId) throw new Error('候选 A 和 B 必须是两张不同的图');
   const buttons = [...elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')];
@@ -3736,15 +3752,47 @@ elements.artifactInspector.addEventListener('submit', async (event) => {
   }
 });
 
-for (const button of elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')) {
+for (const button of document.querySelectorAll('[data-comparison-outcome]')) {
   button.addEventListener('click', async () => {
+    if (comparingPhotos || savingDelivery) return;
+    comparingPhotos = true;
     try {
+      elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = true;
+      renderPreference(currentManifest);
       await saveAestheticComparison(button.dataset.comparisonOutcome);
     } catch (error) {
-      elements.aestheticComparisonMessage.textContent = `无法保存：${error.message}`;
+      elements.aestheticComparisonMessage.textContent = '无法保存：' + error.message;
+    } finally {
+      comparingPhotos = false;
+      renderPreference(currentManifest);
+      elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = !currentPair()[1];
     }
   });
 }
+
+elements.comparisonMediaStage.addEventListener('click', event => {
+  const target = event.target.closest('[data-pick-photo], [data-enlarge]');
+  if (!target || !currentManifest) return;
+  const side = target.dataset.pickPhoto || target.dataset.enlarge;
+  const index = side === 'a' ? 0 : 1;
+  const ids = currentPair();
+  if (target.hasAttribute('data-pick-photo')) {
+    if (!savingDelivery && currentManifest.artifact_reviews?.[ids[index]]?.preference_eligible) draftDecision('winner', ids[index]);
+  } else {
+    const items = ids.filter(Boolean).map(id => ({
+      url: reviewArtifactFileUrl(currentRunId,id), caption: '候选 ' + photoDesignation(id),
+    }));
+    openMediaPreview(items, index, target);
+  }
+});
+document.querySelector('#otherDelivery').addEventListener('change', event => {
+  if (event.target.value) draftDecision(event.target.value);
+  else if (currentManifest) renderPreference(currentManifest);
+});
+elements.preferenceForm.elements.notes.addEventListener('input', () => {
+  const current = deliverySelection(currentManifest);
+  draftDecision(current.decision, current.id);
+});
 
 for (const button of elements.reviewStepButtons) {
   button.addEventListener('click', () => {
@@ -3758,46 +3806,48 @@ for (const button of elements.reviewStepButtons) {
   });
 }
 
-elements.comparisonArtifactA.addEventListener('change', () => {
-  if (currentManifest) renderComparisonPreviews(currentManifest);
-});
+for (const select of [elements.comparisonArtifactA, elements.comparisonArtifactB]) {
+  select.addEventListener('change', () => {
+    if (!currentManifest) return;
+    const other = select === elements.comparisonArtifactA ? elements.comparisonArtifactB : elements.comparisonArtifactA;
+    if (other.value === select.value) other.value = [...other.options].find(option => option.value !== select.value).value;
+    elements.aestheticComparisonForm.elements.notes.value = '';
+    renderComparisonPreviews(currentManifest);
+    renderPreference(currentManifest);
+  });
+}
 
-elements.comparisonArtifactB.addEventListener('change', () => {
-  if (currentManifest) renderComparisonPreviews(currentManifest);
-});
-
-elements.preferenceForm.addEventListener('change', (event) => {
-  if (event.target.name === 'decision') elements.winnerField.hidden = event.target.value !== 'winner';
-});
-
-elements.preferenceForm.addEventListener('submit', async (event) => {
+elements.preferenceForm.addEventListener('submit', async event => {
   event.preventDefault();
-  if (!currentRunId) return;
-  const form = new FormData(event.currentTarget);
-  const selectedCustomerId = String(form.get('customerId') || '');
-  if (!selectedCustomerId && form.get('customerName')) form.set('customerId', customerIdFromName(form.get('customerName')));
-  const button = document.querySelector('#savePreference');
-  setBusy(button, true, '正在保存');
+  if (!currentRunId || savingDelivery || document.querySelector('#savePreference').disabled) return;
+  const run = currentRunId;
+  const {decision,id,notes} = deliverySelection(currentManifest);
+  savingDelivery = true;
+  elements.preferenceForm.elements.notes.disabled = true;
+  renderPreference(currentManifest);
+  let failure = '';
   try {
-    const decision = String(form.get('decision') || 'pending');
-    const winnerArtifactId = String(form.get('winnerArtifactId') || '');
-    if (decision === 'winner' && !winnerArtifactId) throw new Error('请选择一张合格候选作为最终交付结果');
-    const data = await api(`/folio/portrait-lab/api/runs/${currentRunId}/preference`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision, winnerArtifactId: winnerArtifactId || null, notes: String(form.get('notes') || '') }) });
-    elements.preferenceMessage.textContent = data.preference.decision === 'winner'
-      ? '最终交付结果已记录'
-      : data.preference.decision === 'none' ? '本次全部不要' : '暂不决定';
-    if (shouldClearRunUrlAfterPreference(data.preference.decision, currentRunOpenedFromHistory)) {
+    const data = await api(`/folio/portrait-lab/api/runs/${run}/preference`, {method:'POST', headers:{'content-type':'application/json'},
+      body:JSON.stringify({decision,winnerArtifactId:decision === 'winner' ? id : null,notes})});
+    if (run !== currentRunId) return;
+    currentManifest.preference = data.preference;
+    deliveryDraft = null;
+    if (shouldClearRunUrlAfterPreference(decision, currentRunOpenedFromHistory)) {
       sessionStorage.setItem(homeNoticeStorageKey, COMPLETED_RUN_NOTICE);
       history.replaceState(null, '', '/folio/portrait-lab/');
     }
-  } catch (error) {
-    elements.preferenceMessage.textContent = `无法保存：${error.message}`;
-  } finally {
-    setBusy(button, false);
     await refreshRun().catch(() => {});
+  } catch (error) {
+    failure = '无法保存：' + error.message;
+  } finally {
+    savingDelivery = false;
+    elements.preferenceForm.elements.notes.disabled = false;
+    if (run === currentRunId) {
+      renderPreference(currentManifest);
+      if (failure) elements.preferenceMessage.textContent = failure;
+    }
   }
 });
-
 
 if (elements.customerSelector) elements.customerSelector.addEventListener('change', async () => {
   if(activeReuseDraft && elements.customerSelector.value!==activeReuseDraft.customer_id){activeReuseDraft=null;reuseFileDescriptors.clear();referenceFileState.identity=[];referenceFileState.templates=[];renderReferencePreviews('identity');renderReferencePreviews('templates');}

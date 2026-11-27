@@ -236,11 +236,38 @@
             </header>
             <div id="artifactGallery" class="artifact-gallery"><div class="empty-state">保存结果后，候选图片会在这里并排展示。</div></div>
             <div class="comparison-media-stage" id="comparisonMediaStage" aria-label="当前 A/B 候选预览" hidden>
-              <figure><img id="comparisonPreviewA" alt="候选 A 预览"><figcaption id="comparisonPreviewALabel">候选 A</figcaption></figure>
+              <figure data-photo-card="a">
+                <button class="photo-enlarge" type="button" data-enlarge="a" aria-label="放大候选 A"><img id="comparisonPreviewA" alt="候选 A"></button>
+                <figcaption class="photo-caption"><strong id="comparisonPreviewALabel">候选 A</strong>
+                  <span class="photo-actions">
+                    <button type="button" data-comparison-outcome="a" aria-pressed="false">更喜欢</button>
+                    <button type="button" class="pick-photo" data-pick-photo="a" aria-pressed="false">选为成片</button>
+                  </span>
+                </figcaption>
+              </figure>
               <span class="comparison-versus" aria-hidden="true">VS</span>
-              <figure><img id="comparisonPreviewB" alt="候选 B 预览"><figcaption id="comparisonPreviewBLabel">候选 B</figcaption></figure>
+              <figure data-photo-card="b">
+                <button class="photo-enlarge" type="button" data-enlarge="b" aria-label="放大候选 B"><img id="comparisonPreviewB" alt="候选 B"></button>
+                <figcaption class="photo-caption"><strong id="comparisonPreviewBLabel">候选 B</strong>
+                  <span class="photo-actions">
+                    <button type="button" data-comparison-outcome="b" aria-pressed="false">更喜欢</button>
+                    <button type="button" class="pick-photo" data-pick-photo="b" aria-pressed="false">选为成片</button>
+                  </span>
+                </figcaption>
+              </figure>
             </div>
+            <div class="review-footer">
             <div class="review-reference-strip" id="reviewReferences" aria-label="评分参照" hidden></div>
+            <div id="photoChoiceBar" class="photo-choice-bar" hidden>
+              <span id="preferenceMessage" role="status"></span>
+              <div class="delivery-actions">
+                <select id="otherDelivery" aria-label="其他交付选项">
+                  <option value="">其他选项</option><option value="none">全部不要</option><option value="pending">暂不决定</option>
+                </select>
+                <button class="primary" type="submit" form="preferenceForm" id="savePreference">确认交付</button>
+              </div>
+            </div>
+            </div>
             <div class="gate-note"><strong>身份底线</strong><span>人脸一致性低于 8.0 直接终止，不进入最好看比较。</span><span class="rubric-version">portrait-review-v3</span></div>
           </section>
           <aside class="review-action-panel">
@@ -250,37 +277,19 @@
             </nav>
             <div class="review-action-content">
               <aside class="artifact-inspector" id="artifactInspector"><div class="inspector-empty"><strong>选择一张候选图</strong><span>评分和备注会集中显示在这里。</span></div></aside>
-              <section class="review-step-panel aesthetic-comparison-panel" id="aestheticComparisonPanel" hidden>
-              <header class="decision-section-heading"><span><strong>2. 纯审美 A/B 对比</strong><small>只比较三项门槛通过的两张候选</small></span><span id="aestheticComparisonMessage">至少需要两张合格候选</span></header>
-              <div class="decision-unavailable" id="comparisonUnavailable"><strong>暂时无法进行 A/B 对比</strong><span>至少需要两张通过三项门槛的候选。</span></div>
-              <form id="aestheticComparisonForm" hidden>
-                <div class="comparison-pair-grid">
-                  <div class="field"><label for="comparisonArtifactA">候选 A</label><select id="comparisonArtifactA" name="artifactAId"><option value="">等待合格候选</option></select></div>
-                  <div class="field"><label for="comparisonArtifactB">候选 B</label><select id="comparisonArtifactB" name="artifactBId"><option value="">等待合格候选</option></select></div>
-                </div>
-                <div class="comparison-outcome-grid" role="group" aria-label="审美对比结果">
-                  <button type="button" data-comparison-outcome="a"><strong>A 更好</strong><small>记录 A 胜 B</small></button>
-                  <button type="button" data-comparison-outcome="b"><strong>B 更好</strong><small>记录 B 胜 A</small></button>
-                  <button type="button" data-comparison-outcome="tie"><strong>差不多</strong><small>记录 tie</small></button>
-                  <button type="button" data-comparison-outcome="skip"><strong>跳过</strong><small>记录 skip</small></button>
-                </div>
-                <div class="field"><label for="comparisonNotes">对比备注（可选）</label><textarea id="comparisonNotes" name="notes" class="short-textarea" placeholder="只记录这两张之间的审美差异。"></textarea></div>
-              </form>
+              <section class="choice-notes" id="aestheticComparisonPanel" hidden>
+                <h2>对比记录</h2><p id="aestheticComparisonMessage" role="status"></p>
+                <form id="aestheticComparisonForm">
+                  <details id="pairSettings"><summary>更换对比照片</summary><div class="comparison-pair-grid">
+                    <label>候选 A<select id="comparisonArtifactA" name="artifactAId"></select></label>
+                    <label>候选 B<select id="comparisonArtifactB" name="artifactBId"></select></label>
+                  </div></details>
+                  <details><summary>比较备注</summary><label for="comparisonNotes" class="sr-only">比较备注</label><textarea id="comparisonNotes" name="notes" rows="3" placeholder="记下两张图的差异"></textarea></details>
+                  <div class="other-comparisons"><button type="button" data-comparison-outcome="tie">差不多</button><button type="button" data-comparison-outcome="skip">跳过比较</button></div>
+                </form>
               </section>
-              <section class="review-step-panel preference-panel" id="preferencePanel" hidden>
-              <header class="decision-section-heading"><span><strong>3. 最终交付选择</strong><small>与 A/B 审美证据分开记录</small></span><span id="preferenceMessage">尚未记录</span></header>
-              <form id="preferenceForm">
-                <div class="decision-grid">
-                  <label class="decision-option"><input type="radio" name="decision" value="winner"><span><strong>选出最终交付的一张</strong><small>只能从三项门槛通过的候选中选择</small></span></label>
-                  <label class="decision-option"><input type="radio" name="decision" value="none"><span><strong>全部不要</strong><small>本次没有值得交付的结果</small></span></label>
-                  <label class="decision-option"><input type="radio" name="decision" value="pending" checked><span><strong>暂不决定</strong><small>保留评分和对比，之后再选</small></span></label>
-                </div>
-                <div class="preference-fields">
-                  <div class="field" id="winnerField" hidden><label for="winnerArtifactId">最终交付候选</label><select id="winnerArtifactId" name="winnerArtifactId"><option value="">请先完成逐图评分</option></select></div>
-                  <div class="field"><label for="preferenceNotes">交付备注</label><textarea id="preferenceNotes" name="notes" class="short-textarea" placeholder="记录最终交付决定；诊断标签只是参考，不会自动替你淘汰。"></textarea></div>
-                  <button class="primary" type="submit" id="savePreference">保存最终选择</button>
-                </div>
-              </form>
+              <section class="choice-notes" id="preferencePanel" hidden>
+                <form id="preferenceForm"><details><summary>交付备注</summary><label for="preferenceNotes" class="sr-only">交付备注</label><textarea id="preferenceNotes" name="notes" rows="3" placeholder="填写给这次选片的备注"></textarea></details></form>
               </section>
             </div>
           </aside>
