@@ -232,12 +232,52 @@ async function verifySliderReview(){
  }finally{await browser.close()}
 }
 
+async function verifyCreationActions(browser) {
+  for (const viewport of [{width:1706,height:930},{width:390,height:844}]) {
+    const page = await browser.newPage({viewport,deviceScaleFactor:viewport.width===1706?1.5:1});
+    try {
+      await page.goto(base,{waitUntil:'domcontentloaded'});
+      await page.locator('.app-shell:not([inert])').waitFor();
+      const example = page.getByRole('link',{name:'查看案例结果'});
+      await example.waitFor();
+      const layout = await example.evaluate(link => {
+        const footer = document.querySelector('.task-brief-footer');
+        const heading = document.querySelector('#generationSettingsHeading');
+        const primary = document.querySelector('#prepareRun');
+        const bounds = link.getBoundingClientRect();
+        return {
+          footerActions: [...footer.querySelectorAll('a[href],button')].map(action=>action.id),
+          background:getComputedStyle(link).backgroundColor,
+          width:bounds.width,
+          headingOffset:Math.abs(bounds.y+bounds.height/2 - heading.getBoundingClientRect().y-heading.offsetHeight/2),
+          beforePrimary:bounds.bottom < primary.getBoundingClientRect().top,
+          fits:bounds.right <= innerWidth && bounds.left >= 0,
+        };
+      });
+      assert.deepEqual(layout.footerActions,['prepareRun'],'Generation footer must have one action');
+      assert.equal(layout.background,'rgba(0, 0, 0, 0)','Case navigation must be a text link');
+      assert.ok(layout.width < 160 && layout.headingOffset < 8 && layout.beforePrimary && layout.fits,JSON.stringify(layout));
+      await page.keyboard.press('Tab');
+      await example.focus();
+      assert.equal(await example.evaluate(link=>getComputedStyle(link).outlineStyle),'solid');
+      await example.press('Enter');
+      await page.waitForURL(url=>url.searchParams.get('run')==='run-demo-review');
+      await page.locator('[data-capture-preview]').first().waitFor();
+      console.log('Creation action hierarchy and keyboard link passed at',viewport.width);
+    } finally { await page.close(); }
+  }
+}
+
 async function verifyGenerationSettings(page) {
   const dialog = page.getByRole('dialog', {name:'API 生图配置'});
   const field = name => dialog.locator('[name="'+name+'"]');
   const open = () => page.locator('#openGenerationSettings').click();
   await page.goto(base);
   await open();
+  const save = await dialog.getByRole('button',{name:'保存设置'}).boundingBox();
+  const clear = await dialog.getByRole('button',{name:'清空'}).boundingBox();
+  assert.ok(Math.abs(save.y - clear.y) < 2 && clear.x+clear.width <= save.x && save.width < 160 && clear.width < 160,
+    'Settings should place compact actions in a single row');
   for (const [name, value] of Object.entries({
     model:'gpt-image-2.6', generatePath:'images/generations', editPath:'images/edits', baseUrl:'', apiKey:'', resultHosts:''
   })) {
@@ -433,6 +473,10 @@ async function verifyGenerationErrors(page) {
   const browser=await chromium.launch(browserOptions);
   const evidence=[];
   try {
+    if (process.argv.includes('--creation-layout')) {
+      await verifyCreationActions(browser);
+      return;
+    }
     if (process.argv.includes('--generation')) {
       const page = await browser.newPage({viewport:{width:1440,height:930}});
       await verifyBrowserGeneration(page);

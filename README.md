@@ -24,6 +24,8 @@
 
 `node verify-layout.cjs --generation` 使用合成 PNG 和隔离的测试响应校验多图编辑、纯文字生成、下载、归档重试和刷新恢复。`node verify-layout.cjs --generation-errors` 检查生成区的错误提示，包括鉴权、权限、端点、限额、网络、响应格式和下载域名。验证公网时设置 `PORTRAIT_REVIEW_ORIGIN=https://xinko.link`。
 
+工作台的任务区只放一个通栏主操作。案例入口放在「任务设置」旁，用可聚焦的文字链接。API 配置弹窗的「清空」和「保存设置」按内容定宽并横排。后续调整任务入口时运行 `node verify-layout.cjs --creation-layout` 和 `node verify-layout.cjs --settings`，检查桌面及窄屏的动作层级、案例链接的键盘操作和设置按钮排布。
+
 三千的默认节点对公网域名的跨域预检返回 403，浏览器遇到该节点联网失败时显示对应提示。线上入口采用浏览器直接连接支持跨域的 HTTPS 生图服务。
 
 ## 同屏评审的原始候选

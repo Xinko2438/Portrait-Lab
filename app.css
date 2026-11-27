@@ -1555,7 +1555,37 @@ select:is(:not([multiple], [size]), [size="1"]):focus-visible,
 }
 
 .generation-mode-field, #checkBrowser { display: none !important; }
-#openTravelCase:not([hidden]) { display: flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 8px; }
+.task-brief-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.task-brief-heading h2 { margin: 0; }
+.task-case-link {
+  padding-block: 7px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.task-case-link:hover { color: var(--ink); }
+.task-case-link:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; }
+.generation-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.generation-settings-actions > button {
+  margin: 0;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
 .portrait-startup { position: absolute; z-index: 900; }
 .portrait-startup[data-failed], .portrait-startup-noscript {
   position: fixed;
@@ -1572,13 +1602,13 @@ body[data-starting] > .workbench-shell {
   --startup-fill: #e0e4ef;
 }
 body[data-starting] :is(.reference-section-heading strong, .task-brief-heading h2,
-  label[for="userSupplement"], .task-options-trigger strong, .task-options-trigger small,
+  .task-case-link, label[for="userSupplement"], .task-options-trigger strong, .task-options-trigger small,
   .add-reference strong, .add-reference small, .creation-readiness) {
   width: fit-content;
   color: transparent;
   background: linear-gradient(var(--startup-fill), var(--startup-fill)) center / 100% 62% no-repeat;
 }
-body[data-starting] :is(#customerSelector, #userSupplement, #openTemplateLibraryButton, #openTaskOptions, #openTravelCase) {
+body[data-starting] :is(#customerSelector, #userSupplement, #openTemplateLibraryButton, #openTaskOptions) {
   color: transparent;
   background-color: var(--startup-fill);
   border-color: transparent;

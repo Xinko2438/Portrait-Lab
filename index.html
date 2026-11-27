@@ -97,7 +97,10 @@
             aria-controls="referenceSettings" title="拖动调整宽度，双击恢复默认"></div>
           <aside class="task-brief" id="referenceSettings">
             <div class="task-brief-scroll">
-            <div class="task-brief-heading"><h2 id="generationSettingsHeading">任务设置</h2></div>
+            <div class="task-brief-heading">
+              <h2 id="generationSettingsHeading">任务设置</h2>
+              <a class="task-case-link" id="openTravelCase" href="?run=run-demo-review&amp;from=history&amp;stage=results">查看案例结果</a>
+            </div>
             <div class="field generation-mode-field"><label for="generationMode">用什么生成</label><select id="generationMode"><option value="web">ChatGPT 网页版</option><option value="api" selected>API 生图</option></select></div>
             <div class="field"><label for="userSupplement">想补充什么？（可不填）</label><textarea id="userSupplement" name="userSupplement" placeholder="例如：背景更亮、穿黑色西装。没有特殊要求可以留空。"></textarea></div>
             <div id="apiModeOptions" class="api-quick-options">
@@ -177,7 +180,6 @@
               <div class="notice compact" id="prepareResult" role="status"></div>
               <p id="creationReadiness" class="creation-readiness" aria-live="polite">先添加一张客户照片，即可继续</p>
               <button class="primary task-submit" type="submit" aria-describedby="creationReadiness prepareResult" id="prepareRun">开始生成</button>
-              <a class="secondary task-submit" id="openTravelCase" href="?run=run-demo-review&amp;from=history&amp;stage=results">查看案例结果</a>
             </footer>
           </aside>
         </form>
@@ -635,7 +637,11 @@
         <small id="resultHostsHelp">服务商返回图片链接时，填写链接的域名，如 cdn.example.com。多个域名用逗号分隔。直接返回图片数据时留空。</small>
       </details>
       <small>点击「开始生成」后，所选图片会发送给你配置的服务商。</small>
-      <button class="primary" type="submit">保存设置</button> <button class="quiet-button" type="reset">清空</button><p id="imageApiSettingsMessage" class="notice" aria-live="polite"></p>
+      <div class="generation-settings-actions">
+        <button class="quiet-button" type="reset">清空</button>
+        <button class="primary" type="submit">保存设置</button>
+      </div>
+      <p id="imageApiSettingsMessage" class="notice" aria-live="polite"></p>
     </form>
   </dialog>
 <a href="/folio/" style="position:fixed;z-index:1000;right:12px;bottom:12px;padding:7px 12px;border-radius:20px;background:#f5f5f2;color:#18202b;font:13px system-ui;text-decoration:none;border:1px solid #b7bbc3">返回选集</a></body>
