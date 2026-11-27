@@ -235,30 +235,9 @@
               <div class="review-stats"><span>已评审 <strong id="reviewedCount">0 / 0</strong></span><span>通过门槛 <strong id="qualifiedCount">0</strong></span></div>
             </header>
             <div id="artifactGallery" class="artifact-gallery"><div class="empty-state">保存结果后，候选图片会在这里并排展示。</div></div>
-            <div class="comparison-media-stage" id="comparisonMediaStage" aria-label="当前 A/B 候选预览" hidden>
-              <figure data-photo-card="a">
-                <button class="photo-enlarge" type="button" data-enlarge="a" aria-label="放大候选 A"><img id="comparisonPreviewA" alt="候选 A"></button>
-                <figcaption class="photo-caption"><strong id="comparisonPreviewALabel">候选 A</strong>
-                  <span class="photo-actions">
-                    <button type="button" data-comparison-outcome="a" aria-pressed="false">更喜欢</button>
-                    <button type="button" class="pick-photo" data-pick-photo="a" aria-pressed="false">选为成片</button>
-                  </span>
-                </figcaption>
-              </figure>
-              <span class="comparison-versus" aria-hidden="true">VS</span>
-              <figure data-photo-card="b">
-                <button class="photo-enlarge" type="button" data-enlarge="b" aria-label="放大候选 B"><img id="comparisonPreviewB" alt="候选 B"></button>
-                <figcaption class="photo-caption"><strong id="comparisonPreviewBLabel">候选 B</strong>
-                  <span class="photo-actions">
-                    <button type="button" data-comparison-outcome="b" aria-pressed="false">更喜欢</button>
-                    <button type="button" class="pick-photo" data-pick-photo="b" aria-pressed="false">选为成片</button>
-                  </span>
-                </figcaption>
-              </figure>
-            </div>
             <div class="review-footer">
             <div class="review-reference-strip" id="reviewReferences" aria-label="评分参照" hidden></div>
-            <div id="photoChoiceBar" class="photo-choice-bar" hidden>
+            <div id="photoChoiceBar" class="photo-choice-bar">
               <span id="preferenceMessage" role="status"></span>
               <div class="delivery-actions">
                 <select id="otherDelivery" aria-label="其他交付选项">
@@ -268,28 +247,23 @@
               </div>
             </div>
             </div>
-            <div class="gate-note"><strong>身份底线</strong><span>人脸一致性低于 8.0 直接终止，不进入最好看比较。</span><span class="rubric-version">portrait-review-v3</span></div>
           </section>
           <aside class="review-action-panel">
-            <nav class="review-step-navigation" id="reviewStepNavigation" aria-label="评审步骤">
-              <button type="button" data-review-step-target="score" aria-selected="false"><span>1</span><strong>评分</strong><small>查看与修改</small></button>
-              <button type="button" data-review-step-target="choice" aria-selected="false"><span>2</span><strong>选择</strong><small>对比与交付</small></button>
-            </nav>
             <div class="review-action-content">
-              <aside class="artifact-inspector" id="artifactInspector"><div class="inspector-empty"><strong>选择一张候选图</strong><span>评分和备注会集中显示在这里。</span></div></aside>
-              <section class="choice-notes" id="aestheticComparisonPanel" hidden>
-                <h2>对比记录</h2><p id="aestheticComparisonMessage" role="status"></p>
+              <section class="review-inspector" id="artifactInspector" aria-label="质量评分"></section>
+              <section class="choice-notes" id="aestheticComparisonPanel">
+                <h2>审美对比</h2><p id="aestheticComparisonMessage" role="status"></p>
                 <form id="aestheticComparisonForm">
                   <details id="pairSettings"><summary>更换对比照片</summary><div class="comparison-pair-grid">
-                    <label>候选 A<select id="comparisonArtifactA" name="artifactAId"></select></label>
-                    <label>候选 B<select id="comparisonArtifactB" name="artifactBId"></select></label>
+                    <label>第一张<select id="comparisonArtifactA" name="artifactAId"></select></label>
+                    <label>第二张<select id="comparisonArtifactB" name="artifactBId"></select></label>
                   </div></details>
-                  <details><summary>比较备注</summary><label for="comparisonNotes" class="sr-only">比较备注</label><textarea id="comparisonNotes" name="notes" rows="3" placeholder="记下两张图的差异"></textarea></details>
+                  <details><summary>比较备注</summary><label for="comparisonNotes" class="sr-only">比较备注</label><textarea id="comparisonNotes" name="notes" rows="2"></textarea></details>
                   <div class="other-comparisons"><button type="button" data-comparison-outcome="tie">差不多</button><button type="button" data-comparison-outcome="skip">跳过比较</button></div>
                 </form>
               </section>
-              <section class="choice-notes" id="preferencePanel" hidden>
-                <form id="preferenceForm"><details><summary>交付备注</summary><label for="preferenceNotes" class="sr-only">交付备注</label><textarea id="preferenceNotes" name="notes" rows="3" placeholder="填写给这次选片的备注"></textarea></details></form>
+              <section class="choice-notes" id="preferencePanel">
+                <form id="preferenceForm"><details><summary>交付备注</summary><label for="preferenceNotes" class="sr-only">交付备注</label><textarea id="preferenceNotes" name="notes" rows="2"></textarea></details></form>
               </section>
             </div>
           </aside>
@@ -556,8 +530,8 @@
   <template id="artifactReviewTemplate">
     <form class="artifact-review-form">
       <div class="artifact-review-scroll">
-      <section class="ai-suggestion-panel" id="aiSuggestionPanel"><div><strong>AI 建议</strong><span data-ai-suggestion-status>未启用；人工评审仍是唯一正式结果。</span></div><button type="button" data-apply-ai-suggestion hidden>采用建议值</button></section>
-      <div class="review-form-heading"><strong>人工质量评分</strong></div>
+      <section class="ai-suggestion-panel" ><div><strong>AI 建议</strong><span data-ai-suggestion-status>未启用；人工评审仍是唯一正式结果。</span></div><button type="button" data-apply-ai-suggestion hidden>采用建议值</button></section>
+
       <div class="primary-score-grid">
         <label class="score-card"><span class="score-label"><strong title="本人特征还原程度">人脸一致性</strong><small>通过 ≥ 8.0</small></span><input name="faceFidelity" type="number" min="0" max="10" step="0.1" required></label>
         <label class="score-card"><span class="score-label"><strong title="画面自然可信程度">真实自然</strong><small>通过 ≥ 7.0</small></span><input name="naturalness" type="number" min="0" max="10" step="0.1" required></label>
@@ -576,7 +550,7 @@
       </details>
       <div class="field notes-field"><label>额外备注</label><textarea name="notes" class="short-textarea" placeholder="记录具体问题、满意之处或需要保留的方向。"></textarea></div>
       </div>
-      <div class="review-actions"><button class="primary" type="submit">保存评分并看下一张</button><div class="artifact-review-message" aria-live="polite"></div></div>
+
     </form>
   </template>
   <script type="module" src="/folio/portrait-lab/demo-start.js?v=c9e3e7397d36" data-entry="/folio/portrait-lab/app.js"></script>

@@ -11,7 +11,7 @@ import { customerIdFromName, taskIntentFromForm } from './task-intent.js';
 import { clampPreviewZoom, orderedPreviewItems, wrappedPreviewIndex } from './media-preview-state.js';
 import { COMPLETED_RUN_NOTICE, INVALID_RUN_NOTICE, apiRunState, buildHistoryPageUrl, buildHistoryRunUrl, isHistoryPageLocation, parseRunLocation, resolveRunStartup, shouldClearRunUrlAfterPreference } from './navigation-state.js';
 import { ACCEPTED_CLIPBOARD_IMAGE_TYPES, clipboardImageFiles, isEditablePasteTarget, mergeFilesWithinLimit } from './clipboard-image.js';
-import { artifactStylePanelMarkup, deriveReviewNavigationState, deriveReviewWorkspaceState, resolveReviewNavigationView, reviewArtifactFileUrl, reviewSubmitLabel } from './review-workspace-state.js';
+import { artifactStylePanelMarkup, deriveReviewWorkspaceState, reviewArtifactFileUrl } from './review-workspace-state.js';
 import { createHistoryWorkspaceState, deriveHistoryRunState, filterAndSortHistoryRuns, historyCustomerOptions, transitionHistoryWorkspace } from './history-workspace.js';
 import { manualPrimaryAfterRemoval, normalizeManualPrimaryIndex, reorderManualPrimary } from './manual-primary-selection.js';
 import { getDefaultFaceAngleAnalyzer } from './face-angle-analyzer.js';
@@ -153,7 +153,6 @@ const elements = {
   sendPromptPreviewDetails: document.querySelector('#sendPromptPreviewDetails'),
   reviewedCount: document.querySelector('#reviewedCount'),
   qualifiedCount: document.querySelector('#qualifiedCount'),
-  comparisonMediaStage: document.querySelector('#comparisonMediaStage'),
   aestheticComparisonPanel: document.querySelector('#aestheticComparisonPanel'),
   aestheticComparisonForm: document.querySelector('#aestheticComparisonForm'),
   aestheticComparisonMessage: document.querySelector('#aestheticComparisonMessage'),
@@ -199,7 +198,6 @@ const elements = {
   previewZoomIn: document.querySelector('#previewZoomIn'),
   previewZoomValue: document.querySelector('#previewZoomValue'),
   reviewActionContent: document.querySelector('.review-action-content'),
-  reviewStepButtons: [...document.querySelectorAll('[data-review-step-target]')],
   stageTabs: [...document.querySelectorAll('[data-stage-target]')],
   stagePanels: [...document.querySelectorAll('[data-stage-panel]')],
 };
@@ -299,7 +297,6 @@ let smartDraftCustomerId=sessionStorage.getItem('ai-img-gen.smart-draft-customer
 let resultWorkbench = null;
 let activeReuseDraft = null;
 let reuseFileDescriptors = new Map();
-let selectedArtifactId = null;
 let activeStage = 'references';
 function openArtifactAnnotation(options) {
   return import('./annotation-editor.js').then(module => module.openArtifactAnnotation(options));
@@ -310,11 +307,9 @@ let historyPageEntryPushed = false;
 let historyRecordNavigationSequence = 0;
 let historyReturnRecordId = null;
 let inspectorDirty = false;
-let activeReviewViewOverride = '';
 let deliveryDraft = null;
 let savingDelivery = false;
 let comparingPhotos = false;
-let pendingReviewMessage = '';
 const referenceFileState = { identity: [], templates: [] };
 const referencePreviewUrls = { identity: [], templates: [] };
 let activePasteTarget = null;
@@ -1686,75 +1681,110 @@ function overallScore(review) {
   return (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1);
 }
 
-function artifactCard(artifact, review, annotation) {
-  const verdict = review?.verdict;
-  const badgeClass = verdict === 'qualified' ? 'success' : verdict === 'identity_rejected' ? 'danger' : review ? 'warning' : 'neutral';
-  const badgeText = review ? (verdictLabels[verdict] || verdict) : '尚未评分';
-  const score = overallScore(review);
-  const annotationCount = Number(annotation?.annotation_count || 0);
-  const selected = artifact.artifact_id === selectedArtifactId;
-  return `<article class="artifact-candidate${selected ? ' selected' : ''}" data-artifact-id="${escapeHtml(artifact.artifact_id)}">
-    <button class="candidate-open" type="button" data-open-annotation="${escapeHtml(artifact.artifact_id)}" aria-label="打开候选 ${artifact.ordinal} 并添加批注">
-      <div class="artifact-image-wrap">
-        <img src="/folio/portrait-lab/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file" alt="候选 ${artifact.ordinal}" loading="lazy">
-        <span class="artifact-rank">${String(artifact.ordinal).padStart(2, '0')}</span>
-        <span class="candidate-badge ${badgeClass}" title="${escapeHtml(badgeText)}">${escapeHtml(badgeText)}</span>
-        <span class="annotation-count${annotationCount ? ' has-annotations' : ''}">${annotationCount ? `批注 ${annotationCount}` : '查看并批注'}</span>
-      </div>
-    </button>
-    <button class="artifact-caption candidate-select" type="button" data-select-artifact="${escapeHtml(artifact.artifact_id)}" aria-pressed="${selected}"><strong>候选 ${artifact.ordinal}</strong>${score ? `<span class="overall-score" title="核心三维均分">${score}</span>` : '<span>未评分</span>'}</button>
-  </article>`;
+function reviewLetter(item) {
+  return String.fromCharCode(64 + Number(item.ordinal));
 }
 
+const reviewIcons = {
+  heart: '<path d="M20.3 5.7a4.9 4.9 0 0 0-7 0L12 7l-1.3-1.3a4.95 4.95 0 0 0-7 7L12 21l8.3-8.3a4.9 4.9 0 0 0 0-7Z"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.7 2.7L16.5 9"/>',
+  pen: '<path d="m15.5 4.5 4 4M4 20l4.8-1 11-11a2.8 2.8 0 0 0-4-4l-11 11Z"/>',
+};
+
+function reviewIcon(name) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">${reviewIcons[name]}</svg>`;
+}
+
+function artifactCard(artifact) {
+  const id = escapeHtml(artifact.artifact_id);
+  const name = reviewLetter(artifact);
+  return `<figure class="review-photo" data-artifact-id="${id}">
+    <button type="button" class="photo-enlarge" data-enlarge="${id}" aria-label="放大候选 ${name}"><img src="${reviewArtifactFileUrl(currentRunId, artifact.artifact_id)}" alt="候选 ${name}"></button>
+    <figcaption><span class="candidate-key">${name}</span><span class="photo-verdict"></span>
+      <div class="card-tools">
+        <button type="button" data-open-annotation="${id}" title="查看与批注" aria-label="批注候选 ${name}">${reviewIcon('pen')}</button>
+        <button type="button" class="heart" data-like="${id}" title="更喜欢这张" aria-label="更喜欢 ${name}" aria-pressed="false">${reviewIcon('heart')}</button>
+        <button type="button" class="delivery-pick" data-pick-photo="${id}" title="选为成片" aria-label="将 ${name} 选为成片" aria-pressed="false">${reviewIcon('check')}<span>选为成片</span></button>
+      </div>
+    </figcaption></figure>`;
+}
+
+// Each matrix column belongs to its candidate's form, including its diagnostics and notes.
+let scoreSignature = '';
+let scoreRun = '';
+let savingScores = false;
+
 function renderArtifactInspector(manifest) {
-  const artifact = (manifest.artifacts || []).find((item) => item.artifact_id === selectedArtifactId);
-  if (!artifact) {
-    elements.artifactInspector.innerHTML = '<div class="inspector-empty"><strong>选择一张候选图</strong><span>评分和备注会集中显示在这里。</span></div>';
-    return;
-  }
-  const review = manifest.artifact_reviews?.[artifact.artifact_id];
-  const verdictText = review ? (verdictLabels[review.verdict] || review.verdict) : '尚未评分';
-  elements.artifactInspector.innerHTML = `<div class="inspector-header">
-    <img class="inspector-thumb" src="/folio/portrait-lab/api/runs/${encodeURIComponent(currentRunId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/file" alt="候选 ${artifact.ordinal}">
-    <div class="inspector-heading"><h2>候选 ${artifact.ordinal}</h2></div>
-  </div>`;
-  const styleSuggestion = manifest.artifact_style_suggestions?.[artifact.artifact_id] || null;
-  if (styleSuggestion) elements.artifactInspector.insertAdjacentHTML('beforeend', artifactStylePanelMarkup(styleSuggestion));
-  const fragment = elements.artifactReviewTemplate.content.cloneNode(true);
-  const form = fragment.querySelector('.artifact-review-form');
-  form.dataset.artifactId = artifact.artifact_id;
-  const suggestion = manifest.review_suggestions?.[artifact.artifact_id] || null;
-  const suggestionPanel = form.querySelector('.ai-suggestion-panel');
-  const suggestionStatus = form.querySelector('[data-ai-suggestion-status]');
-  const applySuggestion = form.querySelector('[data-apply-ai-suggestion]');
-  suggestionPanel.hidden = !suggestion;
-  if (suggestion) {
-    suggestionStatus.textContent = `AI 建议已生成（${suggestion.provider_id || 'provider'} / ${suggestion.model_id || 'model'}），尚未成为人工评审。`;
-    applySuggestion.hidden = false;
-    applySuggestion.addEventListener('click', () => {
-      const suggestionScores = suggestion.scores || suggestion;
-      form.elements.faceFidelity.value = scoreValue(suggestionScores, 'face_identity_fidelity');
-      form.elements.naturalness.value = scoreValue(suggestionScores, 'realism_naturalness');
-      form.elements.style.value = scoreValue(suggestionScores, 'style_consistency');
-      const suggestedCodes = new Set(suggestion.diagnostic_codes || []);
-      for (const checkbox of form.querySelectorAll('input[name="diagnosticCodes"]')) checkbox.checked = suggestedCodes.has(checkbox.value);
-      form.querySelector('.artifact-review-message').textContent = 'AI 建议已填入；只有点击保存后才会成为人工评审。';
+  const items = manifest.artifacts || [];
+  const signature = JSON.stringify([currentRunId, items.map(item => item.artifact_id), manifest.artifact_reviews, manifest.review_suggestions, manifest.artifact_style_suggestions]);
+  if (scoreRun !== currentRunId) inspectorDirty = false;
+  if (signature === scoreSignature || inspectorDirty) return;
+  scoreSignature = signature;
+  scoreRun = currentRunId;
+  const inspector = elements.artifactInspector;
+  inspector.replaceChildren();
+  if (!items.length) return;
+  const heading = document.createElement('h2');
+  heading.textContent = '质量评分';
+  const table = document.createElement('table');
+  table.className = 'quality-matrix';
+  table.setAttribute('aria-label', '候选照片质量评分');
+  const header = table.createTHead().insertRow();
+  header.innerHTML = '<th scope="col">评分项</th>' + items.map(item => '<th scope="col">'+reviewLetter(item)+'</th>').join('');
+  const body = table.createTBody();
+  const labels = ['人脸一致性','真实自然','风格一致'];
+  const rows = labels.map((label,i) => {
+    const row = body.insertRow();
+    row.innerHTML = '<th scope="row">'+label+'<small>≥ '+(i === 0 ? '8.0' : '7.0')+'</small></th>';
+    return row;
+  });
+  const extra = document.createElement('details');
+  extra.className = 'review-diagnostics';
+  extra.innerHTML = '<summary>逐图诊断与备注</summary>';
+  inspector.append(heading,table,extra);
+  for (const item of items) {
+    const review = manifest.artifact_reviews?.[item.artifact_id];
+    const form = elements.artifactReviewTemplate.content.querySelector('form').cloneNode(true);
+    const letter = reviewLetter(item);
+    form.dataset.artifactId = item.artifact_id;
+    form.id = 'quality-form-' + letter;
+    form.removeAttribute('class');
+    const perPhoto = document.createElement('details');
+    perPhoto.innerHTML = '<summary>候选 '+letter+'</summary>';
+    perPhoto.append(form);
+    extra.append(perPhoto);
+    numericScoreFields.forEach(([name,key],i) => {
+      const input = form.elements[name];
+      input.value = scoreValue(review,key);
+      input.setAttribute('form',form.id);
+      input.setAttribute('aria-label',letter+' '+labels[i]);
+      input.placeholder = '—';
+      rows[i].insertCell().append(input);
     });
-  } else {
-    suggestionStatus.textContent = 'AI 建议未启用；人工评审仍是唯一正式结果。';
+    form.querySelector('.primary-score-grid').remove();
+    const diagnosticCodes = diagnosticCodesForDisplay(review);
+    for (const checkbox of form.querySelectorAll('[name="diagnosticCodes"]')) checkbox.checked = diagnosticCodes.has(checkbox.value);
+    form.elements.notes.value = review?.notes || '';
+    form.querySelector('.legacy-review-note').hidden = !review || review.review_rubric_version === currentRubricVersion;
+    const styleSuggestion = manifest.artifact_style_suggestions?.[item.artifact_id];
+    if (styleSuggestion) form.insertAdjacentHTML('afterbegin', artifactStylePanelMarkup(styleSuggestion));
+    const suggestion = manifest.review_suggestions?.[item.artifact_id];
+    const panel = form.querySelector('.ai-suggestion-panel');
+    panel.hidden = !suggestion;
+    if (suggestion) {
+      panel.querySelector('[data-ai-suggestion-status]').textContent = '可填入建议值后人工确认';
+      const apply = panel.querySelector('button');
+      apply.hidden = false;
+      apply.onclick = () => {
+        for (const [name,key] of numericScoreFields) form.elements[name].value = scoreValue(suggestion.scores || suggestion,key);
+        const codes = new Set(suggestion.diagnostic_codes || []);
+        for (const box of form.querySelectorAll('[name="diagnosticCodes"]')) box.checked = codes.has(box.value);
+        form.dispatchEvent(new Event('input',{bubbles:true}));
+      };
+    }
   }
-  for (const [formName, reviewName] of numericScoreFields) form.elements[formName].value = scoreValue(review, reviewName);
-  const diagnosticCodes = diagnosticCodesForDisplay(review);
-  for (const checkbox of form.querySelectorAll('input[name="diagnosticCodes"]')) {
-    checkbox.checked = diagnosticCodes.has(checkbox.value);
-  }
-  const legacyNote = form.querySelector('.legacy-review-note');
-  if (legacyNote) legacyNote.hidden = !review || review.review_rubric_version === currentRubricVersion;
-  form.elements.notes.value = review?.notes || '';
-  form.querySelector('button[type="submit"]').textContent = reviewSubmitLabel(manifest, artifact.artifact_id);
-  form.querySelector('.artifact-review-message').textContent = pendingReviewMessage || (review ? verdictText : '');
-  pendingReviewMessage = '';
-  elements.artifactInspector.append(fragment);
+  inspector.insertAdjacentHTML('beforeend','<div class="score-save"><span id="scoreStatus" role="status"></span><button type="button" id="saveScores" disabled>保存评分</button></div>');
+  document.querySelector('#scoreStatus').textContent = items.every(item => manifest.artifact_reviews?.[item.artifact_id]) ? '已保存' : '待评分';
 }
 
 function renderCaptureBody(manifest=currentManifest,{busy=captureBusy}={}){
@@ -1803,19 +1833,22 @@ function renderCaptureBody(manifest=currentManifest,{busy=captureBusy}={}){
 
 function renderArtifacts(manifest) {
   renderCaptureBody(manifest);
-  const artifacts = manifest.artifacts || [];
-  const reviews = manifest.artifact_reviews || {};
-  const annotations = manifest.artifact_annotations || {};
-  if (!artifacts.some((artifact) => artifact.artifact_id === selectedArtifactId)) {
-    selectedArtifactId = artifacts.find((artifact) => !reviews[artifact.artifact_id])?.artifact_id || artifacts[0]?.artifact_id || null;
+  const items = manifest.artifacts || [];
+  const gallery = elements.artifactGallery;
+  const signature = JSON.stringify([currentRunId,items.map(item => [item.artifact_id,item.ordinal])]);
+  if (gallery.dataset.signature !== signature) {
+    gallery.innerHTML = items.length ? items.map(artifactCard).join('') : '<p class="empty-state">暂无候选照片</p>';
+    gallery.dataset.signature = signature;
+    gallery.dataset.count = String(items.length);
   }
-  elements.artifactGallery.innerHTML = artifacts.length
-    ? artifacts.map((artifact) => artifactCard(artifact, reviews[artifact.artifact_id], annotations[artifact.artifact_id])).join('')
-    : '<div class="empty-state">保存结果后，候选图片会在这里并排展示。</div>';
-  const reviewed = artifacts.filter((artifact) => reviews[artifact.artifact_id]).length;
-  const qualified = artifacts.filter((artifact) => reviews[artifact.artifact_id]?.preference_eligible === true).length;
-  elements.reviewedCount.textContent = `${reviewed} / ${artifacts.length}`;
-  elements.qualifiedCount.textContent = String(qualified);
+  const reviews = manifest.artifact_reviews || {};
+  gallery.querySelectorAll('.review-photo').forEach((card,i) => {
+    const review = reviews[items[i].artifact_id];
+    const score = overallScore(review);
+    card.querySelector('.photo-verdict').textContent = review ? (review.preference_eligible ? score + ' 分' : '未达标') : '待评分';
+  });
+  elements.reviewedCount.textContent = items.filter(item => reviews[item.artifact_id]).length + ' / ' + items.length;
+  elements.qualifiedCount.textContent = String(items.filter(item => reviews[item.artifact_id]?.preference_eligible).length);
   renderArtifactInspector(manifest);
 }
 
@@ -1834,29 +1867,12 @@ function renderReviewReferences(manifest) {
     reviewReferenceGroup({ kind: 'template', title: '构图 / 风格参考', references: manifest.template_references || [] }),
     reviewReferenceGroup({ kind: 'identity', title: '客户身份原图', references: manifest.identity_references || [] }),
   ].filter(Boolean);
-  elements.reviewReferences.innerHTML = groups.join('');
-  elements.reviewReferences.hidden = groups.length === 0;
-}
-
-function renderReviewWorkspaceStep(manifest) {
-  const navigationState = deriveReviewNavigationState(manifest);
-  const activeView = resolveReviewNavigationView(manifest, activeReviewViewOverride);
-  const showComparison = activeView === 'choice' && navigationState.choiceSections.includes('comparison');
-  const mediaMode = activeView === 'choice' && elements.comparisonArtifactA.value ? 'comparison' : 'gallery';
-  document.querySelector('#reviewWorkspace').dataset.view = activeView;
-  document.querySelector('#photoChoiceBar').hidden = activeView !== 'choice';
-  for (const button of elements.reviewStepButtons) {
-    const target = button.dataset.reviewStepTarget;
-    const available = navigationState.navigableViews.includes(target);
-    button.disabled = !available;
-    button.setAttribute('aria-selected', String(target === activeView));
+  const markup = groups.join('');
+  if (elements.reviewReferences.dataset.referenceKey !== markup) {
+    elements.reviewReferences.innerHTML = markup;
+    elements.reviewReferences.dataset.referenceKey = markup;
   }
-  elements.reviewActionContent.dataset.reviewView = activeView;
-  elements.artifactGallery.hidden = mediaMode === 'comparison';
-  elements.comparisonMediaStage.hidden = mediaMode !== 'comparison';
-  elements.artifactInspector.hidden = activeView !== 'score';
-  elements.aestheticComparisonPanel.hidden = !showComparison;
-  elements.preferencePanel.hidden = activeView !== 'choice';
+  elements.reviewReferences.hidden = groups.length === 0;
 }
 
 function currentPair() {
@@ -1864,10 +1880,8 @@ function currentPair() {
 }
 
 function photoDesignation(id) {
-  const index = currentPair().indexOf(id);
-  if (index >= 0 && id) return index === 0 ? 'A' : 'B';
-  const artifact = currentManifest?.artifacts.find(item => item.artifact_id === id);
-  return artifact ? '候选 ' + artifact.ordinal : '';
+  const item = currentManifest?.artifacts?.find(item => item.artifact_id === id);
+  return item ? reviewLetter(item) : '';
 }
 
 function deliverySelection(manifest) {
@@ -1889,35 +1903,26 @@ function draftDecision(decision, id = '') {
 }
 
 function renderComparisonPreviews(manifest) {
-  const [a, b] = currentPair();
-  elements.comparisonMediaStage.classList.toggle('single-choice', Boolean(a && !b));
-  for (const [index, card] of Array.from(elements.comparisonMediaStage.querySelectorAll('figure')).entries()) {
-    const id = index === 0 ? a : b;
-    const artifact = manifest.artifacts.find(item => item.artifact_id === id);
-    card.hidden = !artifact;
-    if (!artifact) continue;
-    const letter = index === 0 ? 'A' : 'B';
-    const caption = letter + ' · 候选 ' + artifact.ordinal;
-    const image = card.querySelector('img');
-    image.src = reviewArtifactFileUrl(currentRunId, id);
-    image.alt = caption;
-    card.querySelector('strong').textContent = caption;
-    card.querySelector('[data-enlarge]').setAttribute('aria-label', '放大' + caption);
-    card.querySelector('[data-comparison-outcome]').hidden = !b;
-  }
-  const history = manifest.aesthetic_comparisons || [];
-  const last = [...history].reverse().find(entry =>
+  const [a,b] = currentPair();
+  const comparison = [...(manifest.aesthetic_comparisons || [])].reverse().find(entry =>
     (entry.artifact_a_id === a && entry.artifact_b_id === b) ||
     (entry.artifact_a_id === b && entry.artifact_b_id === a));
-  let outcome = last?.outcome;
-  if (last && last.artifact_a_id !== a && (outcome === 'a' || outcome === 'b')) {
-    outcome = outcome === 'a' ? 'b' : 'a';
+  const preferred = comparison?.outcome === 'a' ? comparison.artifact_a_id :
+    comparison?.outcome === 'b' ? comparison.artifact_b_id : '';
+  elements.aestheticComparisonMessage.textContent = !a || !b ? '两张照片达标后可比较' : preferred ? '偏好 ' + photoDesignation(preferred) :
+    comparison?.outcome === 'tie' ? '两张差不多' : comparison?.outcome === 'skip' ? '已跳过比较' : '未记录';
+  const allReviewed = manifest.artifacts.every(item => manifest.artifact_reviews?.[item.artifact_id]);
+  const unavailable = !allReviewed || !a || !b || comparingPhotos || savingDelivery || inspectorDirty || savingScores;
+  for (const heart of elements.artifactGallery.querySelectorAll('[data-like]')) {
+    const id = heart.dataset.like;
+    const eligiblePair = [a,b].includes(id) && b;
+    heart.disabled = unavailable || !eligiblePair;
+    heart.setAttribute('aria-pressed', String(Boolean(preferred) && id === preferred));
+    heart.title = !eligiblePair ? '需要两张达标照片组成对比' : preferred === id ? '撤销这次偏好' : '更喜欢这张';
   }
-  const messages = {a:'更喜欢 A', b:'更喜欢 B', tie:'两张差不多', skip:'已跳过比较'};
-  elements.aestheticComparisonMessage.textContent = messages[outcome] || '尚未记录偏好';
-  for (const button of document.querySelectorAll('[data-comparison-outcome]')) {
-    button.disabled = !a || !b || comparingPhotos || savingDelivery;
-    button.setAttribute('aria-pressed', String(button.dataset.comparisonOutcome === outcome));
+  for (const button of elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')) {
+    button.disabled = unavailable;
+    button.setAttribute('aria-pressed', String(button.dataset.comparisonOutcome === comparison?.outcome));
   }
 }
 
@@ -1943,28 +1948,26 @@ function renderPreference(manifest) {
   const complete = manifest.artifacts.length > 0 && manifest.artifacts.every(item => manifest.artifact_reviews?.[item.artifact_id]);
   const designation = photoDesignation(id);
   const label = decision === 'winner' ? designation : decision === 'none' ? '全部不要' : '暂不决定';
-  for (const button of elements.comparisonMediaStage.querySelectorAll('[data-pick-photo]')) {
-    const photo = currentPair()[button.dataset.pickPhoto === 'a' ? 0 : 1];
+  for (const button of elements.artifactGallery.querySelectorAll('[data-pick-photo]')) {
+    const photo = button.dataset.pickPhoto;
     const chosen = Boolean(photo && decision === 'winner' && photo === id);
-    button.disabled = savingDelivery || !complete || !manifest.artifact_reviews?.[photo]?.preference_eligible;
+    button.disabled = savingDelivery || comparingPhotos || inspectorDirty || savingScores || !complete || !manifest.artifact_reviews?.[photo]?.preference_eligible;
     button.setAttribute('aria-pressed', String(chosen));
-    button.textContent = chosen ? '✓ 已选为成片' : '选为成片';
+    button.querySelector('span').textContent = chosen ? '已选成片' : '选为成片';
     if (photo) button.setAttribute('aria-label', photoDesignation(photo) + ' · ' + button.textContent.replace('✓ ', ''));
     button.closest('figure').classList.toggle('picked', chosen);
   }
   const other = document.querySelector('#otherDelivery');
   other.value = ['none', 'pending'].includes(decision) ? decision : '';
   other.disabled = savingDelivery;
-  for (const action of document.querySelectorAll('[data-comparison-outcome]')) {
-    action.disabled = savingDelivery || comparingPhotos || !currentPair()[1];
-  }
+  renderComparisonPreviews(manifest);
   const submit = document.querySelector('#savePreference');
-  submit.disabled = savingDelivery || comparingPhotos || unchanged || !decision || (decision !== 'pending' && !complete);
+  submit.disabled = savingDelivery || comparingPhotos || inspectorDirty || savingScores || unchanged || !decision || (decision !== 'pending' && !complete);
   submit.textContent = savingDelivery ? '正在保存…' : unchanged ? '已保存' :
     decision === 'winner' ? '确认交付 ' + label : decision === 'none' ? '确认全部不要' : decision === 'pending' ? '保存为暂不决定' : '确认交付';
   elements.preferenceMessage.textContent = decision === 'winner'
     ? (unchanged ? '已交付 ' : '待交付 ') + label
-    : decision ? label : currentPair()[0] ? '请选择一张成片' : '暂无合格的交付候选';
+    : decision ? label : !complete ? '完成评分后选片' : currentPair()[0] ? '请选择一张成片' : '暂无合格的交付候选';
   if (elements.preferenceForm.elements.notes.value !== notes) elements.preferenceForm.elements.notes.value = notes;
 }
 
@@ -1999,7 +2002,6 @@ function renderPrimaryActionPresentation(manifest=currentManifest){
 function renderRun(data) {
   currentRunData = data;
   const manifest = data.manifest;
-  if (currentRunId && currentRunId !== data.runId) activeReviewViewOverride = '';
   currentRunId = data.runId;
   clearPendingRunCreationIdempotencyKey();
   currentManifest = manifest;
@@ -2039,7 +2041,7 @@ function renderRun(data) {
   renderArtifacts(manifest);
   renderAestheticComparison(manifest);
   renderPreference(manifest);
-  renderReviewWorkspaceStep(manifest);
+
   generationMode?.sync();
   syncCaptureRefresh();
 }
@@ -2095,7 +2097,6 @@ function syncCaptureRefresh(){
 function returnToNewTask(notice, { replaceUrl = true } = {}) {
   currentRunId = null;
   currentRunData = null;
-  activeReviewViewOverride = '';
   currentManifest = null;
   captureAutomationState = null;
   syncCaptureRefresh();
@@ -2104,7 +2105,7 @@ function returnToNewTask(notice, { replaceUrl = true } = {}) {
   smartTaskWorkflow?.clear();smartResolved=null;smartRestoredRunId=null;
   activeReuseDraft=null;reuseFileDescriptors.clear();
   generationMode?.reset();
-  selectedArtifactId = null;
+
   inspectorDirty = false;
   templateSelectionSources.clear();
   currentRunOpenedFromHistory = false;
@@ -2428,12 +2429,11 @@ async function openHistoryRecordReview(runId) {
     && currentRunId === runId
     && history.state?.source === 'history-record'
     && history.state?.runId === runId;
-  activeReviewViewOverride = '';
   currentRunId = runId;
   currentRunOpenedFromHistory = true;
   currentManifest = null;
   currentRunData = null;
-  selectedArtifactId = null;
+
   inspectorDirty = false;
   elements.historyNavigationMessage.textContent = '正在打开记录…';
   elements.historyPage.setAttribute('aria-busy', 'true');
@@ -2817,7 +2817,6 @@ async function createAndSubmitArtifactRevision({ runId, artifactId }) {
   if (!['submitted', 'submission_uncertain'].includes(submitted.state)) {
     throw new Error(submitted.message || `子任务 ${childRunId} 未能发送；系统没有重试。`);
   }
-  activeReviewViewOverride = '';
   currentRunId = childRunId;
   currentRunOpenedFromHistory = false;
   history.replaceState(null, '', `?run=${encodeURIComponent(childRunId)}`);
@@ -3512,7 +3511,7 @@ document.querySelector('#runForm').addEventListener('submit', async (event) => {
       throw new Error(probe.browser.message || 'Playwright 尚未连接默认 Chrome，系统没有创建、上传或发送任务。');
     }
     const data = await api('/folio/portrait-lab/api/runs', { method: 'POST', body: form });
-    activeReviewViewOverride = '';
+
     currentRunId = data.runId;
     currentRunOpenedFromHistory = false;
     history.replaceState(null, '', `?run=${encodeURIComponent(currentRunId)}`);
@@ -3701,90 +3700,102 @@ elements.artifactImportForm.addEventListener('submit', async (event) => {
   }
 });
 
-elements.artifactGallery.addEventListener('click', (event) => {
-  const annotationButton = event.target.closest('[data-open-annotation]');
-  if (annotationButton && currentManifest) {
-    const artifactId = annotationButton.dataset.openAnnotation;
-    if (inspectorDirty && artifactId !== selectedArtifactId && !window.confirm('当前候选的评分尚未保存。打开其他图片会丢失这些未保存输入，是否继续？')) return;
-    selectedArtifactId = artifactId;
-    inspectorDirty = false;
-    renderArtifacts(currentManifest);
-    const artifact = currentManifest.artifacts.find((item) => item.artifact_id === artifactId);
-    openArtifactAnnotation({
-      runId: currentRunId,
-      artifact,
-      onSaved: async () => { await refreshRun(); },
-      onSubmitRevision: !currentManifest.image_api && artifactRevisionCapability === 'ready' ? createAndSubmitArtifactRevision : null,
-    }).catch((error) => { elements.resultMessage.textContent = `无法打开批注：${error.message}`; });
-    return;
-  }
-  const button = event.target.closest('[data-select-artifact]');
-  if (!button || !currentManifest) return;
-  if (inspectorDirty && !window.confirm('当前候选的评分尚未保存。切换后会丢失这些未保存输入，是否继续？')) return;
-  selectedArtifactId = button.dataset.selectArtifact;
-  inspectorDirty = false;
-  renderArtifacts(currentManifest);
-});
-
-elements.artifactInspector.addEventListener('input', (event) => {
-  if (event.target.closest('.artifact-review-form')) inspectorDirty = true;
-});
-
-elements.artifactInspector.addEventListener('submit', async (event) => {
-  const form = event.target.closest('.artifact-review-form');
-  if (!form) return;
-  event.preventDefault();
-  const artifactId = form.dataset.artifactId;
-  const button = form.querySelector('button[type="submit"]');
-  const message = form.querySelector('.artifact-review-message');
-  const nextArtifactId = currentManifest?.artifacts?.find((artifact) => artifact.artifact_id !== artifactId && !currentManifest.artifact_reviews?.[artifact.artifact_id])?.artifact_id || artifactId;
-  setBusy(button, true, '正在保存');
-  try {
-    const data = await api(`/folio/portrait-lab/api/runs/${currentRunId}/artifacts/${artifactId}/review`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(reviewPayload(form)) });
-    inspectorDirty = false;
-    selectedArtifactId = nextArtifactId;
-    pendingReviewMessage = `上一张已保存：${verdictLabels[data.review.verdict] || data.review.verdict}`;
-  } catch (error) {
-    message.textContent = `无法保存评分：${error.message}`;
-  } finally {
-    setBusy(button, false);
-    await refreshRun().catch(() => {});
-  }
-});
-
-for (const button of document.querySelectorAll('[data-comparison-outcome]')) {
-  button.addEventListener('click', async () => {
-    if (comparingPhotos || savingDelivery) return;
-    comparingPhotos = true;
-    try {
-      elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = true;
-      renderPreference(currentManifest);
-      await saveAestheticComparison(button.dataset.comparisonOutcome);
-    } catch (error) {
-      elements.aestheticComparisonMessage.textContent = '无法保存：' + error.message;
-    } finally {
-      comparingPhotos = false;
-      renderPreference(currentManifest);
-      elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = !currentPair()[1];
-    }
-  });
+function syncReviewControls() {
+  if (!currentManifest) return;
+  renderPreference(currentManifest);
+  const save = document.querySelector('#saveScores');
+  if (save) save.disabled = !inspectorDirty || savingScores || comparingPhotos || savingDelivery;
 }
 
-elements.comparisonMediaStage.addEventListener('click', event => {
-  const target = event.target.closest('[data-pick-photo], [data-enlarge]');
-  if (!target || !currentManifest) return;
-  const side = target.dataset.pickPhoto || target.dataset.enlarge;
-  const index = side === 'a' ? 0 : 1;
-  const ids = currentPair();
-  if (target.hasAttribute('data-pick-photo')) {
-    if (!savingDelivery && currentManifest.artifact_reviews?.[ids[index]]?.preference_eligible) draftDecision('winner', ids[index]);
-  } else {
-    const items = ids.filter(Boolean).map(id => ({
-      url: reviewArtifactFileUrl(currentRunId,id), caption: '候选 ' + photoDesignation(id),
-    }));
-    openMediaPreview(items, index, target);
+elements.artifactInspector.addEventListener('input', event => {
+  const form = event.target.form || event.target.closest('form');
+  if (!form?.dataset.artifactId) return;
+  form.dataset.dirty = 'true';
+  inspectorDirty = true;
+  document.querySelector('#scoreStatus').textContent = '待保存';
+  syncReviewControls();
+});
+elements.artifactInspector.addEventListener('submit', event => {
+  event.preventDefault();
+  document.querySelector('#saveScores')?.click();
+});
+elements.artifactInspector.addEventListener('click', async event => {
+  if (!event.target.closest('#saveScores') || savingScores || savingDelivery || comparingPhotos || !currentRunId) return;
+  const inspector = elements.artifactInspector;
+  const forms = [...inspector.querySelectorAll('form[data-dirty="true"]')];
+  if (!forms.length || forms.some(form => !form.reportValidity())) return;
+  const run = currentRunId;
+  const payloads = forms.map(form => reviewPayload(form));
+  savingScores = true;
+  inspector.inert = true;
+  let failed = '';
+  try {
+    document.querySelector('#scoreStatus').textContent = '正在保存…';
+    syncReviewControls();
+    for (const [i,form] of forms.entries()) {
+      const id = form.dataset.artifactId;
+      const result = await api(`/folio/portrait-lab/api/runs/${encodeURIComponent(run)}/artifacts/${encodeURIComponent(id)}/review`, {
+        method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payloads[i])
+      });
+      if (currentRunId !== run) break;
+      currentManifest.artifact_reviews[id] = result.review;
+      delete form.dataset.dirty;
+    }
+  } catch (error) { failed = '保存失败：' + error.message; }
+  finally {
+    savingScores = false;
+    inspector.inert = false;
+    if (currentRunId === run) {
+      inspectorDirty = Boolean(inspector.querySelector('form[data-dirty]'));
+      await refreshRun().catch(() => { renderArtifacts(currentManifest); renderAestheticComparison(currentManifest); });
+      if (failed) document.querySelector('#scoreStatus').textContent = failed;
+      syncReviewControls();
+    }
   }
 });
+
+async function recordComparison(outcome) {
+  if (!currentRunId || comparingPhotos || savingDelivery || inspectorDirty || savingScores) return;
+  comparingPhotos = true;
+  let failure = '';
+  try {
+    elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = true;
+    syncReviewControls();
+    await saveAestheticComparison(outcome);
+  } catch (error) { failure = '无法保存：' + error.message; }
+  finally {
+    comparingPhotos = false;
+    elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = !currentPair()[1];
+    syncReviewControls();
+    if (failure) elements.aestheticComparisonMessage.textContent = failure;
+  }
+}
+elements.aestheticComparisonForm.addEventListener('click',event => {
+  const button = event.target.closest('[data-comparison-outcome]');
+  if (button) void recordComparison(button.dataset.comparisonOutcome);
+});
+
+elements.artifactGallery.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button || !currentManifest) return;
+  const id = button.closest('[data-artifact-id]')?.dataset.artifactId;
+  const items = currentManifest.artifacts;
+  const index = items.findIndex(item => item.artifact_id === id);
+  if (index < 0) return;
+  if (button.hasAttribute('data-enlarge')) {
+    openMediaPreview(items.map(item => ({url:reviewArtifactFileUrl(currentRunId,item.artifact_id),caption:'候选 '+reviewLetter(item)})),index,button);
+  } else if (button.hasAttribute('data-open-annotation')) {
+    openArtifactAnnotation({runId:currentRunId,artifact:items[index],onSaved:refreshRun,
+      onSubmitRevision:!currentManifest.image_api && artifactRevisionCapability === 'ready' ? createAndSubmitArtifactRevision : null})
+      .catch(error => {elements.preferenceMessage.textContent = '无法打开批注：' + error.message;});
+  } else if (button.hasAttribute('data-pick-photo')) {
+    draftDecision('winner',id);
+  } else if (button.hasAttribute('data-like')) {
+    const side = currentPair().indexOf(id);
+    if (side >= 0) void recordComparison(button.getAttribute('aria-pressed') === 'true' ? 'clear' : side === 0 ? 'a' : 'b');
+  }
+});
+
 document.querySelector('#otherDelivery').addEventListener('change', event => {
   if (event.target.value) draftDecision(event.target.value);
   else if (currentManifest) renderPreference(currentManifest);
@@ -3794,21 +3805,9 @@ elements.preferenceForm.elements.notes.addEventListener('input', () => {
   draftDecision(current.decision, current.id);
 });
 
-for (const button of elements.reviewStepButtons) {
-  button.addEventListener('click', () => {
-    if (!currentManifest) return;
-    const target = button.dataset.reviewStepTarget;
-    if (!deriveReviewNavigationState(currentManifest).navigableViews.includes(target)) return;
-    if (inspectorDirty && target !== 'score' && !window.confirm('当前候选的评分尚未保存。切换步骤会丢失这些未保存输入，是否继续？')) return;
-    if (target !== 'score') inspectorDirty = false;
-    activeReviewViewOverride = target;
-    renderReviewWorkspaceStep(currentManifest);
-  });
-}
-
 for (const select of [elements.comparisonArtifactA, elements.comparisonArtifactB]) {
   select.addEventListener('change', () => {
-    if (!currentManifest) return;
+    if (!currentManifest || comparingPhotos || savingDelivery) return;
     const other = select === elements.comparisonArtifactA ? elements.comparisonArtifactB : elements.comparisonArtifactA;
     if (other.value === select.value) other.value = [...other.options].find(option => option.value !== select.value).value;
     elements.aestheticComparisonForm.elements.notes.value = '';
@@ -3843,7 +3842,7 @@ elements.preferenceForm.addEventListener('submit', async event => {
     savingDelivery = false;
     elements.preferenceForm.elements.notes.disabled = false;
     if (run === currentRunId) {
-      renderPreference(currentManifest);
+      syncReviewControls();
       if (failure) elements.preferenceMessage.textContent = failure;
     }
   }
