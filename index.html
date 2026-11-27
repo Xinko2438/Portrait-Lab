@@ -107,7 +107,7 @@
             <section class="task-options-entry" id="moreTaskSettings">
               <button type="button" id="openTaskOptions" class="task-options-trigger" aria-haspopup="dialog" aria-controls="taskOptionsDialog"><span><strong>更多设置</strong><small>用途、风格与画面细节 · 可选</small></span><span class="task-options-arrow" aria-hidden="true">›</span></button>
               <dialog class="advanced-reference-settings task-options-dialog" id="taskOptionsDialog" aria-labelledby="taskOptionsTitle" aria-describedby="taskOptionsDescription">
-                <header class="task-options-header"><div><h2 id="taskOptionsTitle">更多设置</h2><p id="taskOptionsDescription">只调整你关心的项目，其余保持自动。</p></div><button type="button" id="closeTaskOptions" class="task-options-close" aria-label="关闭更多设置" autofocus>×</button></header>
+                <header class="task-options-header"><div><h2 id="taskOptionsTitle">更多设置</h2><p id="taskOptionsDescription">只调整你关心的项目，其余保持自动。</p></div><button type="button" id="closeTaskOptions" class="task-options-close close-icon-button" autofocus aria-label="关闭更多设置" title="关闭更多设置"><span class="close-icon-glyph" aria-hidden="true"></span></button></header>
               <div class="advanced-settings-body" id="taskOptionsBody" tabindex="0" role="region" aria-label="更多设置内容">
                 <div class="field"><label for="intendedUse">成片用途（可选）</label><select id="intendedUse" name="intendedUse"><option value="custom">普通人物写真（自动）</option><option value="livestream_cover">直播封面</option><option value="social_avatar">社交媒体头像</option><option value="personal_ip_poster">个人 IP 海报</option><option value="course_promotion">课程宣传</option><option value="company_profile">企业宣传</option><option value="event_poster">活动海报</option><option value="professional_portrait">职业形象</option><option value="lifestyle_portrait">生活写真</option></select></div>
                 <section id="apiAdvancedOptions" class="api-advanced-options" hidden>
@@ -177,7 +177,7 @@
               <div class="notice compact" id="prepareResult" role="status"></div>
               <p id="creationReadiness" class="creation-readiness" aria-live="polite">先添加一张客户照片，即可继续</p>
               <button class="primary task-submit" type="submit" aria-describedby="creationReadiness prepareResult" id="prepareRun">开始生成</button>
-              <a class="primary task-submit" id="openTravelCase" href="?run=run-demo-selected&amp;from=history&amp;stage=results">查看案例结果</a>
+              <a class="primary task-submit" id="openTravelCase" href="?run=run-demo-review&amp;from=history&amp;stage=results">查看案例结果</a>
             </footer>
           </aside>
         </form>
@@ -212,7 +212,7 @@
         <div class="notice result-notice" id="resultMessage">尚未保存结果。</div>
         <details class="generation-recovery" id="generationRecovery"><summary>任务未完成？查看恢复操作</summary>        <div class="generation-layout">
           <section class="card generation-card">
-            <div class="card-heading"><div><span class="section-kicker">Reference preflight</span><h2>参考图预检</h2></div></div>
+            <div class="card-heading"><div><h2>参考图预检</h2></div></div>
             <div class="preflight-message" id="preflightMessage">等待任务预检。</div>
             
           </section>
@@ -237,6 +237,12 @@
             <div id="artifactGallery" class="artifact-gallery"><div class="empty-state">保存结果后，候选图片会在这里并排展示。</div></div>
             <div class="review-footer">
             <div class="review-reference-strip" id="reviewReferences" aria-label="评分参照" hidden></div>
+            <div class="review-compare-strip" id="reviewCompareActions">
+              <button class="review-tie" type="button" data-comparison-outcome="tie" aria-label="两张差不多" aria-pressed="false"><span aria-hidden="true">=</span>差不多</button>
+              <button class="review-skip" type="button" data-comparison-outcome="skip">跳过比较</button>
+              <span id="aestheticComparisonMessage" role="status"></span>
+            </div>
+            <span id="reviewCompletion" role="status" class="review-completion"></span>
             <div id="photoChoiceBar" class="photo-choice-bar">
               <span id="preferenceMessage" role="status"></span>
               <div class="delivery-actions">
@@ -252,14 +258,13 @@
             <div class="review-action-content">
               <section class="review-inspector" id="artifactInspector" aria-label="质量评分"></section>
               <section class="choice-notes" id="aestheticComparisonPanel">
-                <h2>审美对比</h2><p id="aestheticComparisonMessage" role="status"></p>
                 <form id="aestheticComparisonForm">
                   <details id="pairSettings"><summary>更换对比照片</summary><div class="comparison-pair-grid">
                     <label>第一张<select id="comparisonArtifactA" name="artifactAId"></select></label>
                     <label>第二张<select id="comparisonArtifactB" name="artifactBId"></select></label>
                   </div></details>
                   <details><summary>比较备注</summary><label for="comparisonNotes" class="sr-only">比较备注</label><textarea id="comparisonNotes" name="notes" rows="2"></textarea></details>
-                  <div class="other-comparisons"><button type="button" data-comparison-outcome="tie">差不多</button><button type="button" data-comparison-outcome="skip">跳过比较</button></div>
+
                 </form>
               </section>
               <section class="choice-notes" id="preferencePanel">
@@ -306,7 +311,7 @@
         </section>
         <section class="history-import-view" id="historyImportView" hidden>
         <aside class="history-import-panel">
-          <div class="history-import-heading"><span class="section-kicker">Manual import</span><h3>导入已有成品</h3><p>一次建立一条完整记录，不会打开或提交 ChatGPT。</p></div>
+          <div class="history-import-heading"><h3>导入已有成品</h3><p>一次建立一条完整记录，不会打开或提交 ChatGPT。</p></div>
           <form id="historyImportForm" class="history-import-form">
             <div class="field"><label for="historyCustomerName">客户名称</label><input id="historyCustomerName" name="customerName" required placeholder="例如：林女士"></div>
             <div class="field"><label for="historyBatchLabel">批次名称</label><input id="historyBatchLabel" name="batchLabel" placeholder="例如：2026-08 商务写真"></div>
@@ -328,7 +333,7 @@
       </div>
       <section class="history-record-view" id="historyRecordView" hidden>
         <header class="history-record-header">
-          <div><span class="section-kicker">Record detail</span><h3 id="historyRecordTitle">历史记录</h3><p id="historyRecordSummary">查看本次输入、成品和评分进度。</p></div>
+          <div><h3 id="historyRecordTitle">历史记录</h3><p id="historyRecordSummary">查看本次输入、成品和评分进度。</p></div>
           <button class="primary" type="button" id="openRecordReview">评分与批注</button>
           <button class="secondary" type="button" id="reuseHistorySettings">沿用这次设置</button>
         </header>
@@ -336,7 +341,7 @@
           <section class="history-record-media" id="historyRecordMedia" aria-label="记录图片"></section>
           <aside class="history-record-editor">
             <details id="historyGenerationDetails" class="generation-details"><summary>生成详情（发送记录）</summary></details>
-            <div class="history-import-heading"><span class="section-kicker">Editable metadata</span><h3>记录信息</h3><p>修改会追加版本记录，不会覆盖最初的提示词文件。</p></div>
+            <div class="history-import-heading"><h3>记录信息</h3><p>修改会追加版本记录，不会覆盖最初的提示词文件。</p></div>
             <form id="historyRecordForm" class="history-import-form">
               <input type="hidden" name="runId">
               <div class="field"><label for="recordCustomerName">客户名称</label><input id="recordCustomerName" name="customerName" placeholder="客户名称"></div>
@@ -400,7 +405,7 @@
 
   <dialog class="customer-photo-dialog" id="customerPhotoRenameDialog" aria-labelledby="customerPhotoRenameTitle">
     <form id="customerPhotoRenameForm">
-      <header><div><span>PHOTO NAME</span><h2 id="customerPhotoRenameTitle">重命名照片</h2></div><button type="button" class="quiet-button" id="cancelCustomerPhotoRename" aria-label="取消重命名">取消</button></header>
+      <header><div><h2 id="customerPhotoRenameTitle">重命名照片</h2></div><button type="button" class="quiet-button close-icon-button" id="cancelCustomerPhotoRename" aria-label="关闭重命名" title="关闭重命名"><span class="close-icon-glyph" aria-hidden="true"></span></button></header>
       <label class="customer-photo-name-field" for="customerPhotoRenameInput"><span>照片名称</span><div><input id="customerPhotoRenameInput" name="name" type="text" maxlength="100" autocomplete="off" required><strong id="customerPhotoRenameExtension"></strong></div><small>只修改照片名称，图片格式、内容和历史任务不会改变。</small></label>
       <p class="customer-photo-rename-message" id="customerPhotoRenameMessage" aria-live="polite"></p>
       <footer><button type="button" class="secondary" id="closeCustomerPhotoRename">取消</button><button type="submit" class="primary" id="saveCustomerPhotoRename">保存名称</button></footer>
@@ -417,7 +422,7 @@
           <button type="button" id="previewZoomIn" aria-label="放大图片" title="放大图片"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg></button>
           <span id="previewZoomValue">100%</span><small>滚轮缩放 · 拖动移动</small>
         </div>
-        <button class="media-preview-close" type="button" id="closeMediaPreview" aria-label="关闭预览" title="关闭预览"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <button class="media-preview-close close-icon-button" type="button" id="closeMediaPreview" aria-label="关闭预览" title="关闭预览"><span class="close-icon-glyph" aria-hidden="true"></span></button>
       </header>
       <button class="media-preview-nav previous" type="button" id="previewPrevious" aria-label="上一张" title="上一张">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
@@ -434,73 +439,68 @@
   <dialog class="annotation-dialog" id="annotationDialog" aria-labelledby="annotationTitle">
     <div class="annotation-shell">
       <header class="annotation-header">
-        <div>
-          <span class="section-kicker">Revision markup</span>
-          <h2 id="annotationTitle">候选图批注</h2>
-          <p>圈出需要修改的区域，并为每个标记写清楚问题。</p>
+        <h2 id="annotationTitle">候选图批注</h2>
+        <div class="annotation-toolbar" role="toolbar" aria-label="图片批注工具">
+          <div class="annotation-tool-group" aria-label="标记工具">
+            <button class="annotation-tool active" type="button" data-annotation-tool="select" aria-label="选择" title="选择">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l12.3 8.2-5.4 1.2 3.1 6.1-2.9 1.5-3.1-6.2L5 18V3z"/></svg><span class="sr-only">选择</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="freehand" aria-label="画笔" title="画笔">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10.6-10.6a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L5 15.8 4 20zM13.8 7l3.2 3.2"/></svg><span class="sr-only">画笔</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="mosaic" aria-label="朦胧马赛克" title="朦胧马赛克">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8M6 8h12M5 12h14M7 16h10M9 20h6"/><path d="M4 6h1M19 18h1"/></svg><span class="sr-only">朦胧马赛克</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="rectangle" aria-label="矩形" title="矩形">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg><span class="sr-only">矩形</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="ellipse" aria-label="圆形" title="圆形">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg><span class="sr-only">圆形</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="arrow" aria-label="箭头" title="箭头">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5M10 5h9v9"/></svg><span class="sr-only">箭头</span>
+            </button>
+            <button class="annotation-tool" type="button" data-annotation-tool="text" aria-label="文字" title="文字">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M12 5v14M8 19h8"/></svg><span class="sr-only">文字</span>
+            </button>
+          </div>
+          <div class="annotation-tool-group compact-tools">
+            <div class="annotation-choice-group mosaic-variant-group" role="group" aria-label="马赛克类型">
+              <button class="mosaic-variant-choice soft active" type="button" data-mosaic-variant="soft_blur" aria-label="柔焦" title="柔焦"></button>
+              <button class="mosaic-variant-choice haze" type="button" data-mosaic-variant="haze" aria-label="雾化" title="雾化"></button>
+              <button class="mosaic-variant-choice frosted" type="button" data-mosaic-variant="frosted" aria-label="磨砂" title="磨砂"></button>
+            </div>
+            <div class="annotation-choice-group annotation-colors" role="group" aria-label="标记颜色">
+              <button class="annotation-color-swatch active" type="button" data-annotation-color="#ef4444" style="--swatch:#ef4444" aria-label="红色" title="红色"></button>
+              <button class="annotation-color-swatch" type="button" data-annotation-color="#f59e0b" style="--swatch:#f59e0b" aria-label="橙色" title="橙色"></button>
+              <button class="annotation-color-swatch" type="button" data-annotation-color="#10b981" style="--swatch:#10b981" aria-label="绿色" title="绿色"></button>
+              <button class="annotation-color-swatch" type="button" data-annotation-color="#3b82f6" style="--swatch:#3b82f6" aria-label="蓝色" title="蓝色"></button>
+              <button class="annotation-color-swatch" type="button" data-annotation-color="#8b5cf6" style="--swatch:#8b5cf6" aria-label="紫色" title="紫色"></button>
+              <button class="annotation-color-swatch" type="button" data-annotation-color="#111827" style="--swatch:#111827" aria-label="黑色" title="黑色"></button>
+              <label class="annotation-custom-color" title="自定义颜色"><span class="sr-only">自定义颜色</span><input id="annotationColor" type="color" value="#ef4444" aria-label="自定义颜色"></label>
+            </div>
+            <div class="annotation-choice-group annotation-widths" role="group" aria-label="线条粗细">
+              <input id="annotationWidth" type="hidden" value="4">
+              <button class="annotation-width-choice" type="button" data-annotation-width="2" aria-label="细线" title="细线"><span style="--sample-width:1px"></span></button>
+              <button class="annotation-width-choice active" type="button" data-annotation-width="4" aria-label="中等粗细" title="中等粗细"><span style="--sample-width:2px"></span></button>
+              <button class="annotation-width-choice" type="button" data-annotation-width="8" aria-label="粗线" title="粗线"><span style="--sample-width:4px"></span></button>
+            </div>
+            <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+            <button class="annotation-tool" type="button" id="undoAnnotation" aria-label="撤销" title="撤销"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l-4 4 4 4M5 11h8a6 6 0 0 1 6 6"/></svg><span class="sr-only">撤销</span></button>
+            <button class="annotation-tool" type="button" id="redoAnnotation" aria-label="重做" title="重做"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l4 4-4 4M19 11h-8a6 6 0 0 0-6 6"/></svg><span class="sr-only">重做</span></button>
+            <button class="annotation-tool" type="button" id="deleteAnnotation" aria-label="删除选中标记" title="删除选中标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg><span class="sr-only">删除选中标记</span></button>
+            <button class="annotation-tool danger-action" type="button" id="clearAnnotations" aria-label="清空全部标记" title="清空全部标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15l7-9 9 7-6 7H8l-4-5zM11 18l5-6"/></svg><span class="sr-only">清空全部标记</span></button>
+            <span class="annotation-toolbar-divider" aria-hidden="true"></span>
+            <button class="annotation-tool" type="button" id="zoomOutAnnotation" aria-label="缩小" title="缩小"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg><span class="sr-only">缩小</span></button>
+            <button class="annotation-tool" type="button" id="zoomInAnnotation" aria-label="放大" title="放大"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg><span class="sr-only">放大</span></button>
+            <button class="annotation-tool" type="button" id="resetZoomAnnotation" aria-label="适合窗口" title="适合窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg><span class="sr-only">适合窗口</span></button>
+          </div>
         </div>
         <div class="annotation-header-actions">
-          <span class="annotation-save-state" id="annotationSaveState">尚未修改</span>
-          <button class="quiet-button" type="button" id="closeAnnotation">关闭</button>
+          <span class="annotation-save-state" id="annotationSaveState" role="status">尚未修改</span>
+          <button class="quiet-button close-icon-button" type="button" id="closeAnnotation" aria-label="关闭批注" title="关闭批注"><span class="close-icon-glyph" aria-hidden="true"></span></button>
         </div>
       </header>
-
-      <div class="annotation-toolbar" role="toolbar" aria-label="图片批注工具">
-        <div class="annotation-tool-group" aria-label="标记工具">
-          <button class="annotation-tool active" type="button" data-annotation-tool="select" aria-label="选择" title="选择">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l12.3 8.2-5.4 1.2 3.1 6.1-2.9 1.5-3.1-6.2L5 18V3z"/></svg><span class="sr-only">选择</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="freehand" aria-label="画笔" title="画笔">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10.6-10.6a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L5 15.8 4 20zM13.8 7l3.2 3.2"/></svg><span class="sr-only">画笔</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="mosaic" aria-label="朦胧马赛克" title="朦胧马赛克">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8M6 8h12M5 12h14M7 16h10M9 20h6"/><path d="M4 6h1M19 18h1"/></svg><span class="sr-only">朦胧马赛克</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="rectangle" aria-label="矩形" title="矩形">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg><span class="sr-only">矩形</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="ellipse" aria-label="圆形" title="圆形">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg><span class="sr-only">圆形</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="arrow" aria-label="箭头" title="箭头">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5M10 5h9v9"/></svg><span class="sr-only">箭头</span>
-          </button>
-          <button class="annotation-tool" type="button" data-annotation-tool="text" aria-label="文字" title="文字">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M12 5v14M8 19h8"/></svg><span class="sr-only">文字</span>
-          </button>
-        </div>
-        <div class="annotation-tool-group compact-tools">
-          <div class="annotation-choice-group mosaic-variant-group" role="group" aria-label="马赛克类型">
-            <button class="mosaic-variant-choice soft active" type="button" data-mosaic-variant="soft_blur" aria-label="柔焦" title="柔焦"></button>
-            <button class="mosaic-variant-choice haze" type="button" data-mosaic-variant="haze" aria-label="雾化" title="雾化"></button>
-            <button class="mosaic-variant-choice frosted" type="button" data-mosaic-variant="frosted" aria-label="磨砂" title="磨砂"></button>
-          </div>
-          <div class="annotation-choice-group annotation-colors" role="group" aria-label="标记颜色">
-            <button class="annotation-color-swatch active" type="button" data-annotation-color="#ef4444" style="--swatch:#ef4444" aria-label="红色" title="红色"></button>
-            <button class="annotation-color-swatch" type="button" data-annotation-color="#f59e0b" style="--swatch:#f59e0b" aria-label="橙色" title="橙色"></button>
-            <button class="annotation-color-swatch" type="button" data-annotation-color="#10b981" style="--swatch:#10b981" aria-label="绿色" title="绿色"></button>
-            <button class="annotation-color-swatch" type="button" data-annotation-color="#3b82f6" style="--swatch:#3b82f6" aria-label="蓝色" title="蓝色"></button>
-            <button class="annotation-color-swatch" type="button" data-annotation-color="#8b5cf6" style="--swatch:#8b5cf6" aria-label="紫色" title="紫色"></button>
-            <button class="annotation-color-swatch" type="button" data-annotation-color="#111827" style="--swatch:#111827" aria-label="黑色" title="黑色"></button>
-            <label class="annotation-custom-color" title="自定义颜色"><span class="sr-only">自定义颜色</span><input id="annotationColor" type="color" value="#ef4444" aria-label="自定义颜色"></label>
-          </div>
-          <div class="annotation-choice-group annotation-widths" role="group" aria-label="线条粗细">
-            <input id="annotationWidth" type="hidden" value="4">
-            <button class="annotation-width-choice" type="button" data-annotation-width="2" aria-label="细线" title="细线"><span style="--sample-width:1px"></span></button>
-            <button class="annotation-width-choice active" type="button" data-annotation-width="4" aria-label="中等粗细" title="中等粗细"><span style="--sample-width:2px"></span></button>
-            <button class="annotation-width-choice" type="button" data-annotation-width="8" aria-label="粗线" title="粗线"><span style="--sample-width:4px"></span></button>
-          </div>
-          <span class="annotation-toolbar-divider" aria-hidden="true"></span>
-          <button class="annotation-tool" type="button" id="undoAnnotation" aria-label="撤销" title="撤销"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l-4 4 4 4M5 11h8a6 6 0 0 1 6 6"/></svg><span class="sr-only">撤销</span></button>
-          <button class="annotation-tool" type="button" id="redoAnnotation" aria-label="重做" title="重做"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l4 4-4 4M19 11h-8a6 6 0 0 0-6 6"/></svg><span class="sr-only">重做</span></button>
-          <button class="annotation-tool" type="button" id="deleteAnnotation" aria-label="删除选中标记" title="删除选中标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg><span class="sr-only">删除选中标记</span></button>
-          <button class="annotation-tool danger-action" type="button" id="clearAnnotations" aria-label="清空全部标记" title="清空全部标记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15l7-9 9 7-6 7H8l-4-5zM11 18l5-6"/></svg><span class="sr-only">清空全部标记</span></button>
-          <span class="annotation-toolbar-divider" aria-hidden="true"></span>
-          <button class="annotation-tool" type="button" id="zoomOutAnnotation" aria-label="缩小" title="缩小"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg><span class="sr-only">缩小</span></button>
-          <button class="annotation-tool" type="button" id="zoomInAnnotation" aria-label="放大" title="放大"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg><span class="sr-only">放大</span></button>
-          <button class="annotation-tool" type="button" id="resetZoomAnnotation" aria-label="适合窗口" title="适合窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg><span class="sr-only">适合窗口</span></button>
-        </div>
-      </div>
 
       <div class="annotation-workspace">
         <section class="annotation-canvas-stage" id="annotationCanvasStage">
@@ -508,19 +508,24 @@
             <canvas id="annotationCanvas"></canvas>
           </div>
         </section>
-        <aside class="annotation-inspector">
-          <div class="annotation-inspector-heading">
-            <span>Selected mark</span>
-            <strong id="annotationSelectionLabel">还没有选中标记</strong>
-          </div>
-          <label class="field"><span>问题类型</span><select id="annotationReason" disabled><option value="face">人脸</option><option value="hair">发型</option><option value="hand">手部</option><option value="clothing">服装</option><option value="pose">姿势</option><option value="background">背景</option><option value="lighting">光影</option><option value="text">文字</option><option value="other" selected>其他</option></select></label>
-          <label class="field"><span>这个区域需要怎么改</span><textarea id="annotationNote" class="short-textarea" disabled placeholder="例如：手指数量不对，保持姿势不变并修正手部结构。"></textarea></label>
-          <div class="annotation-object-hint" id="annotationObjectHint">先用画笔或形状圈出问题区域，再填写备注。</div>
-          <label class="field annotation-overall-note"><span>整体修改要求</span><textarea id="annotationOverallNote" class="short-textarea" placeholder="补充整张图片共同需要调整的内容。"></textarea></label>
-          <div class="annotation-scope-note"><strong>先保存，再决定是否发送</strong><span>保存批注仍然只写入本地。只有点击下方“在原对话继续修改”，才会上传干净原图和标记预览，并发送一次修改要求。</span><span class="annotation-revision-state" id="annotationRevisionState" aria-live="polite">保存至少一个标记后可继续修改。</span></div>
+        <aside class="annotation-inspector" aria-labelledby="annotationInspectorTitle">
+          <h2 id="annotationInspectorTitle" class="annotation-inspector-title">修改要求</h2>
+          <section class="annotation-region" aria-labelledby="annotationSelectionLabel">
+            <h3 id="annotationSelectionLabel">区域批注</h3>
+            <p class="annotation-object-hint" id="annotationObjectHint">圈出需要修改的地方，再选中标记写备注。</p>
+            <div class="annotation-region-fields" id="annotationRegionFields" hidden>
+              <label class="field"><span>问题类型</span><select id="annotationReason" disabled><option value="face">人脸</option><option value="hair">发型</option><option value="hand">手部</option><option value="clothing">服装</option><option value="pose">姿势</option><option value="background">背景</option><option value="lighting">光影</option><option value="text">文字</option><option value="other" selected>其他</option></select></label>
+              <label class="field"><span>怎么改</span><textarea id="annotationNote" disabled></textarea></label>
+            </div>
+          </section>
+          <label class="field annotation-overall-note"><span>整图要求</span><textarea id="annotationOverallNote" placeholder="例如：整体光线柔和一点。"></textarea></label>
           <div class="annotation-action-stack">
-            <button class="secondary" type="button" id="saveAnnotation">保存批注</button>
-            <button class="primary" type="button" id="submitArtifactRevision" disabled>在原对话继续修改</button>
+            <button class="primary" type="button" id="saveAnnotation">保存批注</button>
+            <div class="annotation-continue" id="annotationContinue" hidden>
+              <button class="secondary" type="button" id="submitArtifactRevision" aria-describedby="annotationSendNotice annotationRevisionState" disabled>在原对话继续修改</button>
+              <p id="annotationSendNotice">继续修改会上传原图和批注预览，并发送一次请求。</p>
+              <p class="annotation-revision-state" id="annotationRevisionState" role="status"></p>
+            </div>
           </div>
         </aside>
       </div>
@@ -566,7 +571,7 @@
         <div class="template-library-header-actions">
           <span class="selected-counter" id="librarySelectedCount">已选 0 / 4</span>
           <button class="primary" type="button" id="confirmLibrarySelection">完成选择</button>
-          <button class="quiet-button close-dialog-button" type="button" id="closeTemplateLibraryButton" aria-label="关闭模板库">✕</button>
+          <button class="quiet-button close-dialog-button close-icon-button" type="button" id="closeTemplateLibraryButton" aria-label="关闭模板库" title="关闭模板库"><span class="close-icon-glyph" aria-hidden="true"></span></button>
         </div>
       </header>
 
@@ -601,7 +606,7 @@
         <aside id="templateDetailDrawer" class="template-detail-drawer" hidden aria-label="模板详情">
           <div class="drawer-header">
             <h3 id="drawerTemplateName">模板详情</h3>
-            <button type="button" class="quiet-button" id="closeDrawerButton" aria-label="关闭详情">✕</button>
+            <button type="button" class="quiet-button close-icon-button" id="closeDrawerButton" aria-label="关闭详情" title="关闭详情"><span class="close-icon-glyph" aria-hidden="true"></span></button>
           </div>
           <div class="drawer-preview">
             <img id="drawerTemplateImage" src="" alt="模板大图预览">
@@ -616,7 +621,7 @@
   </dialog>
 
   <dialog id="generationSettingsDialog" class="generation-settings-dialog" aria-labelledby="generationSettingsTitle">
-    <header><h2 id="generationSettingsTitle">API 生图配置</h2><button type="button" class="quiet-button" id="closeGenerationSettings" aria-label="关闭生成设置">关闭</button></header>
+    <header><h2 id="generationSettingsTitle">API 生图配置</h2><button type="button" class="quiet-button close-icon-button" id="closeGenerationSettings" aria-label="关闭生成设置" title="关闭生成设置"><span class="close-icon-glyph" aria-hidden="true"></span></button></header>
     <form id="imageApiSettingsForm">
       <p>配置保存在当前浏览器的标签页会话中，密钥仅在当前页面有效。</p>
       <label>API 地址<input name="baseUrl" type="url" placeholder="https://api.openai.com/v1" required></label>

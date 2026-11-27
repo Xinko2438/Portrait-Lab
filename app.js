@@ -1654,7 +1654,7 @@ function renderIdentityCoverage() {
 
 function scoreValue(review, key) {
   const value = review?.[key];
-  return Number.isFinite(Number(value)) ? String(value) : '';
+  return value != null && value !== '' && Number.isFinite(Number(value)) ? String(value) : '';
 }
 
 function diagnosticCodesForDisplay(review) {
@@ -1714,10 +1714,94 @@ let scoreSignature = '';
 let scoreRun = '';
 let savingScores = false;
 
+const scoreLabels = ['人脸一致性', '真实自然', '风格一致'];
+const scoreLimits = [8, 7, 7];
+const usesScoreFlow = manifest => manifest?.review_flow === 'score-only-v1';
+
+function makeScoreScale(input, letter, i, label) {
+  const range = document.createElement('input');
+  range.type = 'range';
+  range.min = '0';
+  range.max = '10';
+  range.step = '0.1';
+  range.className = 'score-slider';
+  range.setAttribute('aria-label', letter + ' ' + scoreLabels[i]);
+  range.setAttribute('aria-describedby', 'score-threshold-' + i);
+  input.className = 'score-number';
+  input.placeholder = '待评';
+  if (input.value !== '') input.value = Number(input.value).toFixed(1);
+  input.setAttribute('aria-label', letter + ' ' + scoreLabels[i] + ' 精确数值');
+  const row = document.createElement('div');
+  row.className = 'score-scale-row';
+  row.innerHTML = '<span class="score-candidate">' + letter + '</span>';
+  const track = document.createElement('div');
+  track.className = 'score-track';
+  track.style.setProperty('--threshold', (scoreLimits[i] * 10) + '%');
+  track.style.setProperty('--threshold-offset', ((0.5 - scoreLimits[i] / 10) * 12) + 'px');
+  track.append(range);
+  row.append(track,input);
+  label.append(row);
+  updateScoreScale(input);
+  return range;
+}
+
+function updateScoreScale(input) {
+  const range = input.closest('.score-scale-row')?.querySelector('.score-slider');
+  if (!range) return;
+  const hasValue = input.value !== '' && input.validity.valid;
+  range.value = hasValue ? input.value : '5';
+  range.dataset.unrated = String(!hasValue);
+  range.style.setProperty('--value', (hasValue ? Number(input.value) * 10 : 0) + '%');
+  range.setAttribute('aria-valuetext', hasValue ? Number(input.value).toFixed(1) + ' 分' : '待评');
+}
+
+function draftStorageKey() {
+  return 'portrait-lab.score-drafts:' + currentRunId;
+}
+function readScoreDrafts() {
+  try { return JSON.parse(sessionStorage.getItem(draftStorageKey()) || '{}'); }
+  catch { return {}; }
+}
+function storeScoreDrafts() {
+  const forms = [...elements.artifactInspector.querySelectorAll('form[data-dirty]')];
+  const drafts = Object.fromEntries(forms.map(form => [form.dataset.artifactId, scoreSnapshot(form)]));
+  try {
+    if (forms.length) sessionStorage.setItem(draftStorageKey(), JSON.stringify(drafts));
+    else sessionStorage.removeItem(draftStorageKey());
+  } catch { /* An in-memory draft remains usable if storage is unavailable. */ }
+}
+function scoreSnapshot(form) {
+  return {
+    scores:numericScoreFields.map(([name]) => form.elements[name].value),
+    diagnostics:[...form.querySelectorAll('[name="diagnosticCodes"]:checked')].map(box=>box.value),
+    notes:form.elements.notes.value,
+  };
+}
+function restoreScoreDraft(form, draft) {
+  if (!draft) return;
+  numericScoreFields.forEach(([name],i) => {
+    form.elements[name].value = draft.scores[i];
+    updateScoreScale(form.elements[name]);
+  });
+  for (const box of form.querySelectorAll('[name="diagnosticCodes"]')) box.checked = draft.diagnostics.includes(box.value);
+  form.elements.notes.value = draft.notes;
+  if (draft.scores.some(value => value === '') || JSON.stringify(reviewPayload(form)) !== form.dataset.savedPayload) {
+    form.dataset.dirty = 'true';
+    inspectorDirty = true;
+  }
+}
+
+function reviewScoreSignature(manifest) {
+  return JSON.stringify([currentRunId, (manifest.artifacts || []).map(item => item.artifact_id), manifest.artifact_reviews, manifest.review_suggestions, manifest.artifact_style_suggestions]);
+}
 function renderArtifactInspector(manifest) {
   const items = manifest.artifacts || [];
-  const signature = JSON.stringify([currentRunId, items.map(item => item.artifact_id), manifest.artifact_reviews, manifest.review_suggestions, manifest.artifact_style_suggestions]);
-  if (scoreRun !== currentRunId) inspectorDirty = false;
+  const signature = reviewScoreSignature(manifest);
+  if (scoreRun !== currentRunId) {
+    clearTimeout(scoreTimer);
+    inspectorDirty = false;
+    activeScorePointer = null;
+  }
   if (signature === scoreSignature || inspectorDirty) return;
   scoreSignature = signature;
   scoreRun = currentRunId;
@@ -1732,7 +1816,16 @@ function renderArtifactInspector(manifest) {
   const header = table.createTHead().insertRow();
   header.innerHTML = '<th scope="col">评分项</th>' + items.map(item => '<th scope="col">'+reviewLetter(item)+'</th>').join('');
   const body = table.createTBody();
-  const labels = ['人脸一致性','真实自然','风格一致'];
+  const labels = scoreLabels;
+  const scoreFlow = usesScoreFlow(manifest);
+  const scaleGroup = document.createElement('div');
+  scaleGroup.className = 'score-scales';
+  const groups = scoreFlow ? labels.map((label,i) => {
+    const group = document.createElement('section');
+    group.innerHTML = '<h3>' + label + '<small id="score-threshold-' + i + '">达标 ≥ ' + scoreLimits[i].toFixed(1) + '</small></h3>';
+    scaleGroup.append(group);
+    return group;
+  }) : [];
   const rows = labels.map((label,i) => {
     const row = body.insertRow();
     row.innerHTML = '<th scope="row">'+label+'<small>≥ '+(i === 0 ? '8.0' : '7.0')+'</small></th>';
@@ -1741,7 +1834,8 @@ function renderArtifactInspector(manifest) {
   const extra = document.createElement('details');
   extra.className = 'review-diagnostics';
   extra.innerHTML = '<summary>逐图诊断与备注</summary>';
-  inspector.append(heading,table,extra);
+  inspector.append(heading,scoreFlow ? scaleGroup : table,extra);
+  const drafts = scoreFlow ? readScoreDrafts() : {};
   for (const item of items) {
     const review = manifest.artifact_reviews?.[item.artifact_id];
     const form = elements.artifactReviewTemplate.content.querySelector('form').cloneNode(true);
@@ -1759,12 +1853,17 @@ function renderArtifactInspector(manifest) {
       input.setAttribute('form',form.id);
       input.setAttribute('aria-label',letter+' '+labels[i]);
       input.placeholder = '—';
-      rows[i].insertCell().append(input);
+      if (scoreFlow) makeScoreScale(input,letter,i,groups[i]);
+      else rows[i].insertCell().append(input);
     });
     form.querySelector('.primary-score-grid').remove();
     const diagnosticCodes = diagnosticCodesForDisplay(review);
     for (const checkbox of form.querySelectorAll('[name="diagnosticCodes"]')) checkbox.checked = diagnosticCodes.has(checkbox.value);
     form.elements.notes.value = review?.notes || '';
+    if (scoreFlow) {
+      form.dataset.savedPayload = review ? JSON.stringify(reviewPayload(form)) : '';
+      restoreScoreDraft(form,drafts[item.artifact_id]);
+    }
     form.querySelector('.legacy-review-note').hidden = !review || review.review_rubric_version === currentRubricVersion;
     const styleSuggestion = manifest.artifact_style_suggestions?.[item.artifact_id];
     if (styleSuggestion) form.insertAdjacentHTML('afterbegin', artifactStylePanelMarkup(styleSuggestion));
@@ -1776,7 +1875,11 @@ function renderArtifactInspector(manifest) {
       const apply = panel.querySelector('button');
       apply.hidden = false;
       apply.onclick = () => {
-        for (const [name,key] of numericScoreFields) form.elements[name].value = scoreValue(suggestion.scores || suggestion,key);
+        for (const [name,key] of numericScoreFields) {
+          const input = form.elements[name];
+          input.value = scoreValue(suggestion.scores || suggestion,key);
+          updateScoreScale(input);
+        }
         const codes = new Set(suggestion.diagnostic_codes || []);
         for (const box of form.querySelectorAll('[name="diagnosticCodes"]')) box.checked = codes.has(box.value);
         form.dispatchEvent(new Event('input',{bubbles:true}));
@@ -1784,7 +1887,8 @@ function renderArtifactInspector(manifest) {
     }
   }
   inspector.insertAdjacentHTML('beforeend','<div class="score-save"><span id="scoreStatus" role="status"></span><button type="button" id="saveScores" disabled>保存评分</button></div>');
-  document.querySelector('#scoreStatus').textContent = items.every(item => manifest.artifact_reviews?.[item.artifact_id]) ? '已保存' : '待评分';
+  const status = document.querySelector('#scoreStatus');
+  status.textContent = inspectorDirty ? '已恢复待保存评分' : items.every(item => manifest.artifact_reviews?.[item.artifact_id]) ? (scoreFlow ? '评分已保存' : '已保存') : '待评分';
 }
 
 function renderCaptureBody(manifest=currentManifest,{busy=captureBusy}={}){
@@ -1840,6 +1944,7 @@ function renderArtifacts(manifest) {
     gallery.innerHTML = items.length ? items.map(artifactCard).join('') : '<p class="empty-state">暂无候选照片</p>';
     gallery.dataset.signature = signature;
     gallery.dataset.count = String(items.length);
+    document.querySelector('#reviewWorkspace').dataset.scoreFlow = String(usesScoreFlow(manifest));
   }
   const reviews = manifest.artifact_reviews || {};
   gallery.querySelectorAll('.review-photo').forEach((card,i) => {
@@ -1902,25 +2007,36 @@ function draftDecision(decision, id = '') {
   renderPreference(currentManifest);
 }
 
+function comparisonButtons() {
+  return document.querySelectorAll('#reviewCompareActions [data-comparison-outcome]');
+}
+
 function renderComparisonPreviews(manifest) {
+  const scoreFlow = usesScoreFlow(manifest);
   const [a,b] = currentPair();
-  const comparison = [...(manifest.aesthetic_comparisons || [])].reverse().find(entry =>
+  const hasPair = Boolean(a && b);
+  // Earlier local score-only previews marked comparisons invalid solely due to score changes.
+  const comparison = [...(manifest.aesthetic_comparisons || [])].reverse().find(entry => (scoreFlow || !entry.invalidated) && (
     (entry.artifact_a_id === a && entry.artifact_b_id === b) ||
-    (entry.artifact_a_id === b && entry.artifact_b_id === a));
+    (entry.artifact_a_id === b && entry.artifact_b_id === a)));
   const preferred = comparison?.outcome === 'a' ? comparison.artifact_a_id :
     comparison?.outcome === 'b' ? comparison.artifact_b_id : '';
-  elements.aestheticComparisonMessage.textContent = !a || !b ? '两张照片达标后可比较' : preferred ? '偏好 ' + photoDesignation(preferred) :
-    comparison?.outcome === 'tie' ? '两张差不多' : comparison?.outcome === 'skip' ? '已跳过比较' : '未记录';
+  const waitingForPair = scoreFlow ? '至少需要两张照片才能比较' : '两张照片达标后可比较';
+  elements.aestheticComparisonMessage.textContent = !hasPair ? waitingForPair : preferred ? '偏好 ' + photoDesignation(preferred) :
+    comparison?.outcome === 'tie' ? '两张差不多' : comparison?.outcome === 'skip' && !scoreFlow ? '已跳过比较' : '未记录';
   const allReviewed = manifest.artifacts.every(item => manifest.artifact_reviews?.[item.artifact_id]);
-  const unavailable = !allReviewed || !a || !b || comparingPhotos || savingDelivery || inspectorDirty || savingScores;
+  elements.aestheticComparisonMessage.dataset.quiet = String(hasPair && !preferred && comparison?.outcome !== 'skip');
+  const requiresScores = !scoreFlow && (!allReviewed || inspectorDirty);
+  const unavailable = requiresScores || !hasPair || comparingPhotos || savingDelivery || savingScores;
   for (const heart of elements.artifactGallery.querySelectorAll('[data-like]')) {
     const id = heart.dataset.like;
-    const eligiblePair = [a,b].includes(id) && b;
-    heart.disabled = unavailable || !eligiblePair;
+    const inPair = id === a || id === b;
+    heart.disabled = unavailable || !inPair;
     heart.setAttribute('aria-pressed', String(Boolean(preferred) && id === preferred));
-    heart.title = !eligiblePair ? '需要两张达标照片组成对比' : preferred === id ? '撤销这次偏好' : '更喜欢这张';
+    heart.title = !hasPair ? waitingForPair : !inPair ? '这张照片未参与当前对比' :
+      preferred === id ? '撤销这次偏好' : '更喜欢这张';
   }
-  for (const button of elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')) {
+  for (const button of comparisonButtons()) {
     button.disabled = unavailable;
     button.setAttribute('aria-pressed', String(button.dataset.comparisonOutcome === comparison?.outcome));
   }
@@ -1942,6 +2058,13 @@ function renderAestheticComparison(manifest) {
 }
 
 function renderPreference(manifest) {
+  if (usesScoreFlow(manifest)) {
+    const complete = manifest.artifacts.length > 0 && manifest.artifacts.every(item => manifest.artifact_reviews?.[item.artifact_id]);
+    const qualified = manifest.artifacts.filter(item => manifest.artifact_reviews?.[item.artifact_id]?.preference_eligible).length;
+    document.querySelector('#reviewCompletion').textContent = complete ? '已评审 · ' + qualified + ' 张合格' : '待完成评分';
+    renderComparisonPreviews(manifest);
+    return;
+  }
   const {decision,id,notes} = deliverySelection(manifest);
   const saved = manifest.preference;
   const unchanged = saved && decision === saved.decision && id === (saved.winner_artifact_id || '') && notes === (saved.notes || '');
@@ -2040,7 +2163,7 @@ function renderRun(data) {
   renderReviewReferences(manifest);
   renderArtifacts(manifest);
   renderAestheticComparison(manifest);
-  renderPreference(manifest);
+  syncReviewControls();
 
   generationMode?.sync();
   syncCaptureRefresh();
@@ -2163,10 +2286,11 @@ async function saveAestheticComparison(outcome) {
   if (!currentRunId) return;
   const data = new FormData(elements.aestheticComparisonForm);
   const [artifactAId,artifactBId] = currentPair();
-  if (!artifactAId || !artifactBId) throw new Error('请先选择两张合格候选');
+  if (!artifactAId || !artifactBId) throw new Error('请先选择两张可比较的照片');
   if (artifactAId === artifactBId) throw new Error('候选 A 和 B 必须是两张不同的图');
-  const buttons = [...elements.aestheticComparisonForm.querySelectorAll('[data-comparison-outcome]')];
+  const buttons = [...comparisonButtons()];
   for (const button of buttons) button.disabled = true;
+  elements.aestheticComparisonMessage.dataset.quiet = 'false';
   elements.aestheticComparisonMessage.textContent = '正在保存对比…';
   try {
     const result = await api(`/folio/portrait-lab/api/runs/${currentRunId}/comparison`, {
@@ -3700,16 +3824,134 @@ elements.artifactImportForm.addEventListener('submit', async (event) => {
   }
 });
 
+let scoreTimer;
+let activeScorePointer = null;
+const scoreInspector = elements.artifactInspector;
+
+function editableScoreInput(input) {
+  if (!input.matches('.score-slider')) return input;
+  const number = input.closest('.score-scale-row').querySelector('.score-number');
+  number.value = Number(input.value).toFixed(1);
+  return number;
+}
+function readyScoreForms() {
+  return [...scoreInspector.querySelectorAll('form[data-dirty]')].filter(form =>
+    numericScoreFields.every(([name]) => {
+      const input = form.elements[name];
+      return input.value !== '' && input.validity.valid;
+    }));
+}
+function hasReadyScores() { return readyScoreForms().length > 0; }
+function setScoreStatus(message) {
+  const status = document.querySelector('#scoreStatus');
+  if (status && status.textContent !== message) status.textContent = message;
+}
+function markScoreEdit(form) {
+  const complete = numericScoreFields.every(([name]) => form.elements[name].value !== '');
+  if (complete && JSON.stringify(reviewPayload(form)) === form.dataset.savedPayload) delete form.dataset.dirty;
+  else form.dataset.dirty = 'true';
+  inspectorDirty = Boolean(scoreInspector.querySelector('form[data-dirty]'));
+  storeScoreDrafts();
+  setScoreStatus(savingScores ? '正在保存…' : inspectorDirty ? '待保存' : '评分已保存');
+  syncReviewControls();
+}
+function scheduleScoreSave() {
+  clearTimeout(scoreTimer);
+  if (!usesScoreFlow(currentManifest) || activeScorePointer || !hasReadyScores()) return;
+  scoreTimer = setTimeout(() => { void saveReadyScores(); }, 450);
+}
+async function saveReadyScores() {
+  clearTimeout(scoreTimer);
+  if (!usesScoreFlow(currentManifest) || !currentRunId || savingScores || comparingPhotos) return;
+  const forms = readyScoreForms();
+  if (!forms.length) return;
+  const run = currentRunId;
+  savingScores = true;
+  setScoreStatus('正在保存…');
+  syncReviewControls();
+  let failure;
+  try {
+    for (const form of forms) {
+      if (run !== currentRunId) break;
+      if (activeScorePointer) break;
+      if (!readyScoreForms().includes(form)) continue;
+      const payload = reviewPayload(form);
+      const snapshot = JSON.stringify(scoreSnapshot(form));
+      const id = form.dataset.artifactId;
+      const result = await api('/folio/portrait-lab/api/runs/' + encodeURIComponent(run) + '/artifacts/' + encodeURIComponent(id) + '/review', {
+        method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload)
+      });
+      if (run !== currentRunId) break;
+      currentManifest.artifact_reviews[id] = result.review;
+      form.dataset.savedPayload = JSON.stringify(payload);
+      if (JSON.stringify(scoreSnapshot(form)) === snapshot) delete form.dataset.dirty;
+      else form.dataset.dirty = 'true';
+      inspectorDirty = Boolean(scoreInspector.querySelector('form[data-dirty]'));
+      storeScoreDrafts();
+    }
+    if (run === currentRunId) {
+      // Fetch updated qualification and comparison evidence without rebuilding the edited inputs.
+      const fresh = await api('/folio/portrait-lab/api/runs/' + encodeURIComponent(run));
+      if (run === currentRunId) {
+        scoreSignature = reviewScoreSignature(fresh.manifest);
+        renderRun(fresh);
+      }
+    }
+  } catch (error) { failure = error.message; }
+  finally {
+    savingScores = false;
+    if (run === currentRunId) {
+      setScoreStatus(failure ? '保存未完成，请重试' : inspectorDirty ? '待保存' : '评分已保存');
+      syncReviewControls();
+      if (!failure && hasReadyScores()) scheduleScoreSave();
+    }
+  }
+}
+scoreInspector.addEventListener('pointerdown', event => {
+  if (!event.target.matches('.score-slider')) return;
+  activeScorePointer = event.target;
+  clearTimeout(scoreTimer);
+});
+window.addEventListener('pointerup', event => {
+  if (!activeScorePointer) return;
+  const slider = activeScorePointer;
+  activeScorePointer = null;
+  if (event.target === slider && slider.dataset.unrated === 'true') {
+    slider.dispatchEvent(new Event('input', {bubbles:true}));
+  }
+  scheduleScoreSave();
+});
+window.addEventListener('pointercancel', () => {
+  activeScorePointer = null;
+});
+scoreInspector.addEventListener('change', event => {
+  if (!usesScoreFlow(currentManifest)) return;
+  const input = event.target;
+  if (input.matches('.score-number') && input.value !== '' && input.validity.valid) input.value = Number(input.value).toFixed(1);
+  if (input.matches('input,textarea')) scheduleScoreSave();
+});
+
 function syncReviewControls() {
   if (!currentManifest) return;
   renderPreference(currentManifest);
   const save = document.querySelector('#saveScores');
+  if (save && usesScoreFlow(currentManifest)) {
+    save.textContent = '保存评分';
+    save.hidden = !hasReadyScores() || savingScores;
+  }
   if (save) save.disabled = !inspectorDirty || savingScores || comparingPhotos || savingDelivery;
 }
 
 elements.artifactInspector.addEventListener('input', event => {
-  const form = event.target.form || event.target.closest('form');
+  const edited = editableScoreInput(event.target);
+  const form = edited.form || edited.closest('form');
   if (!form?.dataset.artifactId) return;
+  if (usesScoreFlow(currentManifest)) {
+    updateScoreScale(edited);
+    markScoreEdit(form);
+    if (!activeScorePointer && (event.target.matches('.score-slider') || event.target === form)) scheduleScoreSave();
+    return;
+  }
   form.dataset.dirty = 'true';
   inspectorDirty = true;
   document.querySelector('#scoreStatus').textContent = '待保存';
@@ -3721,6 +3963,10 @@ elements.artifactInspector.addEventListener('submit', event => {
 });
 elements.artifactInspector.addEventListener('click', async event => {
   if (!event.target.closest('#saveScores') || savingScores || savingDelivery || comparingPhotos || !currentRunId) return;
+  if (usesScoreFlow(currentManifest)) {
+    await saveReadyScores();
+    return;
+  }
   const inspector = elements.artifactInspector;
   const forms = [...inspector.querySelectorAll('form[data-dirty="true"]')];
   if (!forms.length || forms.some(form => !form.reportValidity())) return;
@@ -3755,7 +4001,7 @@ elements.artifactInspector.addEventListener('click', async event => {
 });
 
 async function recordComparison(outcome) {
-  if (!currentRunId || comparingPhotos || savingDelivery || inspectorDirty || savingScores) return;
+  if (!currentRunId || comparingPhotos || savingDelivery || savingScores || (inspectorDirty && !usesScoreFlow(currentManifest))) return;
   comparingPhotos = true;
   let failure = '';
   try {
@@ -3767,12 +4013,19 @@ async function recordComparison(outcome) {
     comparingPhotos = false;
     elements.comparisonArtifactA.disabled = elements.comparisonArtifactB.disabled = !currentPair()[1];
     syncReviewControls();
-    if (failure) elements.aestheticComparisonMessage.textContent = failure;
+    if (failure) {
+      elements.aestheticComparisonMessage.dataset.quiet = 'false';
+      elements.aestheticComparisonMessage.textContent = failure;
+    }
+    if (usesScoreFlow(currentManifest) && hasReadyScores()) scheduleScoreSave();
   }
 }
-elements.aestheticComparisonForm.addEventListener('click',event => {
+document.querySelector('#reviewCompareActions').addEventListener('click', event => {
   const button = event.target.closest('[data-comparison-outcome]');
-  if (button) void recordComparison(button.dataset.comparisonOutcome);
+  if (!button || button.disabled) return;
+  const outcome = button.dataset.comparisonOutcome;
+  const clear = outcome === 'tie' && usesScoreFlow(currentManifest) && button.getAttribute('aria-pressed') === 'true';
+  void recordComparison(clear ? 'clear' : outcome);
 });
 
 elements.artifactGallery.addEventListener('click', event => {
@@ -3787,9 +4040,9 @@ elements.artifactGallery.addEventListener('click', event => {
   } else if (button.hasAttribute('data-open-annotation')) {
     openArtifactAnnotation({runId:currentRunId,artifact:items[index],onSaved:refreshRun,
       onSubmitRevision:!currentManifest.image_api && artifactRevisionCapability === 'ready' ? createAndSubmitArtifactRevision : null})
-      .catch(error => {elements.preferenceMessage.textContent = '无法打开批注：' + error.message;});
+      .catch(error => {(usesScoreFlow(currentManifest) ? document.querySelector('#reviewCompletion') : elements.preferenceMessage).textContent = '无法打开批注：' + error.message;});
   } else if (button.hasAttribute('data-pick-photo')) {
-    draftDecision('winner',id);
+    if (!usesScoreFlow(currentManifest)) draftDecision('winner',id);
   } else if (button.hasAttribute('data-like')) {
     const side = currentPair().indexOf(id);
     if (side >= 0) void recordComparison(button.getAttribute('aria-pressed') === 'true' ? 'clear' : side === 0 ? 'a' : 'b');
@@ -3818,7 +4071,7 @@ for (const select of [elements.comparisonArtifactA, elements.comparisonArtifactB
 
 elements.preferenceForm.addEventListener('submit', async event => {
   event.preventDefault();
-  if (!currentRunId || savingDelivery || document.querySelector('#savePreference').disabled) return;
+  if (!currentRunId || usesScoreFlow(currentManifest) || savingDelivery || document.querySelector('#savePreference').disabled) return;
   const run = currentRunId;
   const {decision,id,notes} = deliverySelection(currentManifest);
   savingDelivery = true;
